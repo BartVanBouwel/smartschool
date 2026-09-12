@@ -1,0 +1,41 @@
+mark_message_read:
+  name: Mark message as read
+  description: Open a Smartschool message so Smartschool marks it as read.
+  fields:
+    entity_id:
+      name: Message entity
+      description: The Smartschool message sensor entity.
+      required: true
+      selector:
+        entity:
+          integration: smartschool
+          domain: sensor
+    message_id:
+      name: Message ID
+      description: Must match the message_id attribute of the selected sensor.
+      required: true
+      selector:
+        number:
+          min: 1
+          mode: box
+
+mark_message_unread:
+  name: Mark message as unread
+  description: Mark a Smartschool message as unread.
+  fields:
+    entity_id:
+      name: Message entity
+      description: The Smartschool message sensor entity.
+      required: true
+      selector:
+        entity:
+          integration: smartschool
+          domain: sensor
+    message_id:
+      name: Message ID
+      description: Must match the message_id attribute of the selected sensor.
+      required: true
+      selector:
+        number:
+          min: 1
+          mode: box
