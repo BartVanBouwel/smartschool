@@ -199,6 +199,12 @@ def _fetch_message_records(session, child_name):
         return getattr(session, "_smartschool_messages_cache", [])
 
     cutoff = dt_util.now() - timedelta(days=14)
+    # Sensors already created for a message must keep being refreshed even once it
+    # drops out of the unread/14-day window below (e.g. after being marked read via
+    # the mark_message_read service) -- otherwise their entity keeps showing stale
+    # attributes (like "unread: true") forever, since async_update() only updates
+    # a sensor when it finds a matching record in this function's return value.
+    known_ids = getattr(session, "_smartschool_message_ids", set())
     session.ensure_authenticated()
     headers = list(MessageHeaders(session, box_type=BoxType.INBOX))
     _log_unread_debug(child_name, f"--- fetch cycle: {len(headers)} headers received ---")
@@ -210,10 +216,12 @@ def _fetch_message_records(session, child_name):
             child_name,
             f"header id={_message_value(header, 'id')} is_unread={is_unread} fields={_dump_header_fields(header)}",
         )
-        if is_unread or cutoff <= message_date <= dt_util.now():
-            message_id = _message_value(header, "id")
-            if message_id is not None:
-                selected.append((int(message_id), header))
+        message_id = _message_value(header, "id")
+        if message_id is None:
+            continue
+        message_id = int(message_id)
+        if is_unread or message_id in known_ids or cutoff <= message_date <= dt_util.now():
+            selected.append((message_id, header))
 
     content_cache = getattr(session, "_smartschool_message_content_cache", None)
     if content_cache is None:

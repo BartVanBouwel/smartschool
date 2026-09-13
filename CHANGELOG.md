@@ -2,6 +2,12 @@
 
 All notable changes to the Smartschool integration.
 
+## 0.8.0 - 2026-09-13
+
+### Bugfixes
+- **`mark_message_read` service had no effect.** It relied on fetching the message content ("show message" action) to implicitly mark it read, per the `smartschool` library's own docs/naming -- but confirmed live (with a real unread message, including a 10-second wait) that this never flips Smartschool's server-side unread flag on this platform. The library only wraps the opposite action (`MarkMessageUnread`); its exact counterpart, `"mark message read"` (subsystem `postboxes`), isn't wrapped by the library but is accepted by the server and does flip the flag (confirmed live). The service now posts that action directly via the same XML dispatcher the library itself uses.
+- **Message sensors for messages older than 14 days never refreshed once marked read**, even after the above fix. `_fetch_message_records()` only keeps a message "selected" (and therefore refreshed) while it's unread or within the last 14 days; once marked read, an old message dropped out of that selection entirely, so its existing sensor's `async_update()` found no matching record and silently kept showing stale attributes (`unread: true`) forever. Any message that already has a sensor entity is now always kept selected/refreshed, regardless of age or read status.
+
 ## 0.7.1 - 2026-09-13
 
 ### Bugfixes

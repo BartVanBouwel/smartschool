@@ -1,4 +1,5 @@
 import logging
+from xml.sax.saxutils import quoteattr
 
 import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
@@ -6,7 +7,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
 from .const import DOMAIN
 from smartschool import Smartschool, AppCredentials
-from smartschool import BoxType, MarkMessageUnread, Message
+from smartschool import BoxType, MarkMessageUnread
 
 _LOGGER = logging.getLogger(__name__)
 SERVICE_MARK_MESSAGE_READ = "mark_message_read"
@@ -105,8 +106,39 @@ def _invalidate_message_cache(session, message_id):
         content_cache.pop(message_id, None)
 
 
+def _mark_message_read_serverside(session, message_id, box_type=BoxType.INBOX):
+    """Explicitly mark a message read via Smartschool's XML dispatcher.
+
+    Fetching the message content ("show message") does NOT flip the server-side
+    unread flag on its own, despite that being the assumption baked into the
+    smartschool library's docs -- confirmed live: the flag stayed unread even
+    10 seconds after fetching. The `smartschool` library only exposes the
+    opposite action (`MarkMessageUnread`, subsystem "postboxes", action
+    "mark message unread"); its exact counterpart "mark message read" isn't
+    wrapped by the library but is accepted by the server (confirmed live,
+    returns <status>1</status> and actually flips the flag), so we call it
+    directly here using the same XML dispatcher the library itself posts to.
+    """
+    command = (
+        "<request><command>"
+        "<subsystem>postboxes</subsystem>"
+        "<action>mark message read</action>"
+        "<params>"
+        f"<param name={quoteattr('boxType')}><![CDATA[{box_type.value}]]></param>"
+        f"<param name={quoteattr('boxID')}><![CDATA[0]]></param>"
+        f"<param name={quoteattr('msgID')}><![CDATA[{message_id}]]></param>"
+        f"<param name={quoteattr('clAction')}><![CDATA[status]]></param>"
+        "</params></command></request>"
+    )
+    session.post(
+        "/?module=Messages&file=dispatcher",
+        data={"command": command},
+        headers={"X-Requested-With": "XMLHttpRequest"},
+    )
+
+
 async def _async_mark_message_read(hass: HomeAssistant, call):
-    """Open a Smartschool message; Smartschool registers this as read."""
+    """Mark a Smartschool message as read."""
     entity_id = call.data["entity_id"]
     message_id = call.data["message_id"]
     message_info = hass.data.get(DOMAIN, {}).get("message_entities", {}).get(entity_id)
@@ -115,11 +147,11 @@ async def _async_mark_message_read(hass: HomeAssistant, call):
 
     session = message_info["session"]
 
-    def open_message():
+    def mark_read():
         session.ensure_authenticated()
-        list(Message(session, message_id, box_type=BoxType.INBOX))
+        _mark_message_read_serverside(session, message_id)
 
-    await hass.async_add_executor_job(open_message)
+    await hass.async_add_executor_job(mark_read)
     _invalidate_message_cache(session, message_id)
     _LOGGER.info("Smartschool message %s opened as read via %s", message_id, entity_id)
     await hass.services.async_call("homeassistant", "update_entity", {"entity_id": entity_id}, blocking=True)
