@@ -2,6 +2,13 @@
 
 All notable changes to the Smartschool integration.
 
+## 0.8.1 - 2026-09-13
+
+### Bugfixes
+- **The real root cause of `mark_message_read`/`mark_message_unread` having no effect: both services were registered with a `lambda call: _async_mark_message_...(hass, call)`.** Home Assistant decides how to schedule a service handler by checking `asyncio.iscoroutinefunction()` on the callable itself -- a lambda that returns a coroutine always fails that check, even though calling it produces one. So HA scheduled it as a plain sync callback, called it once, and discarded the returned (never-awaited) coroutine without ever running its body -- while still reporting a successful (200 OK / empty response) service call. Confirmed live with a debug file written as the very first line of the handler: it never got created after calling the service. Fixed by registering real `async def` wrapper functions instead. This means `mark_message_unread` was equally broken, not just `mark_message_read`.
+- Fixed `automations.yaml`'s "Smartschool - mark message read (webhook)" automation (the one driving the dashboard's mark-as-read button) still calling `smartschool_api.mark_message_read` -- the domain name from before the integration was renamed to `smartschool`. It's been silently failing (unknown service) since the rename.
+- Fixed `configuration.yaml`'s `logger` block still pointing at `custom_components.smartschool_api` instead of `custom_components.smartschool`, meaning debug logging for this integration was never actually enabled since the rename either.
+
 ## 0.8.0 - 2026-09-13
 
 ### Bugfixes

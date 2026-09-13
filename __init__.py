@@ -179,18 +179,33 @@ async def _async_mark_message_unread(hass: HomeAssistant, call):
 
 async def async_setup(hass: HomeAssistant, config):
     """Register integration-wide Smartschool services."""
+
+    # These must be real `async def` callables, not a `lambda` returning a coroutine:
+    # HA decides how to schedule a service handler by inspecting the callable itself
+    # with `asyncio.iscoroutinefunction()`. A lambda always fails that check even
+    # though calling it produces a coroutine, so HA schedules it as a plain callback,
+    # calls it once, and discards the returned (never-awaited) coroutine without
+    # ever running its body -- the service call still reports success. Confirmed
+    # live: a debug file written as the very first line of _async_mark_message_read
+    # never got created after calling the service, despite an HTTP 200 response.
+    async def _handle_mark_message_read(call):
+        await _async_mark_message_read(hass, call)
+
+    async def _handle_mark_message_unread(call):
+        await _async_mark_message_unread(hass, call)
+
     if not hass.services.has_service(DOMAIN, SERVICE_MARK_MESSAGE_READ):
         hass.services.async_register(
             DOMAIN,
             SERVICE_MARK_MESSAGE_READ,
-            lambda call: _async_mark_message_read(hass, call),
+            _handle_mark_message_read,
             schema=MARK_MESSAGE_READ_SCHEMA,
         )
     if not hass.services.has_service(DOMAIN, SERVICE_MARK_MESSAGE_UNREAD):
         hass.services.async_register(
             DOMAIN,
             SERVICE_MARK_MESSAGE_UNREAD,
-            lambda call: _async_mark_message_unread(hass, call),
+            _handle_mark_message_unread,
             schema=MARK_MESSAGE_READ_SCHEMA,
         )
     return True
