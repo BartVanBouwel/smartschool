@@ -2,6 +2,13 @@
 
 All notable changes to the Smartschool integration.
 
+## 0.6.1 - 2026-09-13
+
+### Bugfixes
+- **Severe performance regression: `_fetch_planned_elements` had no caching.** Since 0.6.0, every single agenda item sensor (one per upcoming planner item, potentially dozens per child) independently triggered its own full, uncached planner API fetch on every poll — on top of the planner and student sensors already doing so. With multiple children configured, this caused hundreds of redundant requests per poll cycle, exhausting the shared HTTP connection pool (`Connection pool is full, discarding connection`) and making the whole Home Assistant UI sluggish, including unrelated pages like Settings. Added a 10-minute session-level cache, matching the existing caching for messages and results.
+- The calendar platform had its own separate, equally uncached planner fetch (`_fetch_raw_elements_for_session`), called independently by both the Planner and Timetable calendar entities every poll. Also now cached per session.
+- `SCAN_INTERVAL` in `const.py` was defined as a plain `int` and never actually imported by the sensor/calendar platforms, so Home Assistant's much shorter default poll interval was used instead of the intended 15 minutes. Fixed to a proper `timedelta` and wired into both platforms.
+
 ## 0.6.0 - 2026-09-12
 
 ### Breaking changes

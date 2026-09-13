@@ -11,7 +11,7 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt as dt_util, slugify
 
-from .const import DOMAIN
+from .const import DOMAIN, SCAN_INTERVAL  # noqa: F401 (SCAN_INTERVAL is read by HA's entity platform)
 
 _LOGGER = logging.getLogger(__name__)
 _LOG_DIR = "/config/custom_components/smartschool/logging"
@@ -514,8 +514,25 @@ def _item_to_event(item):
     )
 
 
+_CALENDAR_CACHE_TTL = timedelta(minutes=10)
+
+
 def _fetch_raw_elements_for_session(session, days=120):
-    """Fetch raw planner items for the whole week plus a fixed look-ahead period."""
+    """Fetch raw planner items for the whole week plus a fixed look-ahead period.
+
+    Cached per (session, days): the planner and timetable calendar entities each poll
+    independently, so without a cache every poll cycle would trigger two full API fetches
+    per child.
+    """
+    now = dt_util.utcnow()
+    cache = getattr(session, "_smartschool_calendar_cache", None)
+    if cache is None:
+        cache = {}
+        session._smartschool_calendar_cache = cache
+    cached = cache.get(days)
+    if cached and now - cached[0] < _CALENDAR_CACHE_TTL:
+        return cached[1]
+
     try:
         user_id = session.authenticated_user["id"]
         from_dt, to_dt = _fetch_window(dt_value=dt_util.now(), days=max(days, 30))
@@ -528,8 +545,10 @@ def _fetch_raw_elements_for_session(session, days=120):
         )
         if not isinstance(raw, list):
             _LOGGER.warning("Calendar planner raw response was not a list: %s", type(raw))
-            return []
-        _LOGGER.info("Calendar raw planner payload returned %s items from %s to %s", len(raw), from_dt, to_dt)
+            raw = []
+        else:
+            _LOGGER.info("Calendar raw planner payload returned %s items from %s to %s", len(raw), from_dt, to_dt)
+        cache[days] = (now, raw)
         return raw
     except Exception as err:
         _LOGGER.error("Calendar raw planner fetch failed: %s", err, exc_info=True)

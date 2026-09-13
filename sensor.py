@@ -9,17 +9,28 @@ from homeassistant.components.sensor import SensorEntity
 from homeassistant.helpers import entity_registry as er
 from homeassistant.util import dt as dt_util, slugify
 from smartschool import Attachments, BoxType, MarkMessageUnread, Message, MessageHeaders
-from .const import DOMAIN
+from .const import DOMAIN, SCAN_INTERVAL  # noqa: F401 (SCAN_INTERVAL is read by HA's entity platform)
 
 _LOGGER = logging.getLogger(__name__)
 _RESULT_CACHE_TTL = timedelta(minutes=10)
 _RESULT_LOG_DIR = "/config/custom_components/smartschool/logging"
 _MESSAGE_DOWNLOAD_DIR = "/config/www/smartschool_messages"
 _MESSAGE_CACHE_TTL = timedelta(minutes=10)
+_PLANNER_CACHE_TTL = timedelta(minutes=10)
 
 
 def _fetch_planned_elements(session):
-    """Fetch all planner items via unfiltered raw JSON; the library filters too strictly by default."""
+    """Fetch all planner items via unfiltered raw JSON; the library filters too strictly by default.
+
+    Cached per session: this is called independently by the planner sensor, the student
+    sensor, and every single agenda item sensor (one per upcoming item) on every poll, so
+    without a cache a single poll cycle would trigger dozens of redundant full API fetches.
+    """
+    now = dt_util.utcnow()
+    cached_at = getattr(session, "_smartschool_planner_cache_at", None)
+    if cached_at and now - cached_at < _PLANNER_CACHE_TTL:
+        return getattr(session, "_smartschool_planner_cache", [])
+
     try:
         user_id = session.authenticated_user["id"]
         from_dt = dt_util.now().replace(hour=0, minute=0, second=0, microsecond=0)
@@ -33,8 +44,11 @@ def _fetch_planned_elements(session):
         )
         if not isinstance(raw, list):
             _LOGGER.warning("Planner raw JSON response was not a list: %s", type(raw))
-            return []
-        _LOGGER.info("Raw planner payload returned %s items", len(raw))
+            raw = []
+        else:
+            _LOGGER.info("Raw planner payload returned %s items", len(raw))
+        session._smartschool_planner_cache = raw
+        session._smartschool_planner_cache_at = now
         return raw
     except Exception as err:
         _LOGGER.error("Raw planner fetch failed: %s", err, exc_info=True)
