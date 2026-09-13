@@ -126,6 +126,18 @@ def _get_planned_element_type(item):
     return str(value)
 
 
+# plannedElementType values that represent an actual timetable lesson (as opposed to
+# a to-do, assignment or school activity). `planned-lesson-cluster-moments` covers
+# combined/level-group lessons (e.g. a lesson merged across multiple courses or a
+# course cluster) -- Smartschool shows these with their own icon in the app.
+_LESSON_TYPES = {
+    "planned-lesson-free-days",
+    "planned-placeholders",
+    "planned-lessons",
+    "planned-lesson-cluster-moments",
+}
+
+
 def _get_item_title(item):
     """Determine the title of an item based on Smartschool type and data."""
     planned_type = _get_planned_element_type(item)
@@ -135,13 +147,13 @@ def _get_item_title(item):
         if name is not None:
             return name
 
-    if planned_type in {"planned-placeholders", "planned-lessons"}:
+    if planned_type in _LESSON_TYPES - {"planned-lesson-free-days"}:
         course_name = _get_course_name(item)
         if course_name:
             return course_name
 
     if _is_lesson_item(item):
-        if planned_type not in {"planned-lesson-free-days", "planned-placeholders", "planned-lessons"}:
+        if planned_type not in _LESSON_TYPES:
             course_name = _get_course_name(item)
             if course_name:
                 return course_name
@@ -158,7 +170,7 @@ def _is_lesson_item(item):
         return False
 
     planned_type = _get_planned_element_type(item)
-    if planned_type in {"planned-lesson-free-days", "planned-placeholders", "planned-lessons"}:
+    if planned_type in _LESSON_TYPES:
         courses = _get_item_value(item, "courses")
         if planned_type == "planned-lesson-free-days":
             return True
@@ -703,7 +715,7 @@ class SmartschoolLessonsCalendarEntity(CalendarEntity):
             elements = await self.hass.async_add_executor_job(self._fetch_raw_elements)
             items = [
                 item for item in elements
-                if _get_planned_element_type(item) in {"planned-lesson-free-days", "planned-placeholders", "planned-lessons"}
+                if _get_planned_element_type(item) in _LESSON_TYPES
             ]
             _log_planner_items(self.entity_id, items)
             events = []

@@ -2,6 +2,11 @@
 
 All notable changes to the Smartschool integration.
 
+## 0.7.1 - 2026-09-13
+
+### Bugfixes
+- **Combined/level-group lessons (`planned-lesson-cluster-moments`) never showed up in any calendar.** Smartschool uses a third `plannedElementType` for lessons merged across courses or a course cluster (shown with a distinct icon in the app) that neither calendar knew about: `_is_lesson_item()`'s generic fallback correctly classified them as lessons (so the Planner calendar excluded them), but the Timetable calendar's own type whitelist didn't include this type, so they were excluded there too -- vanishing from both. Introduced a shared `_LESSON_TYPES` constant (now including `planned-lesson-cluster-moments`) used consistently across `_get_item_title`, `_is_lesson_item`, and the Timetable calendar's filter. Confirmed against a live query that these lessons were present in the raw `/planner/api/v1/planned-elements` response all along.
+
 ## 0.7.0 - 2026-09-13
 
 ### Removed

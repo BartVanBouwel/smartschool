@@ -1,4 +1,4 @@
-![Version](https://img.shields.io/badge/version-0.7.0-blue)
+![Version](https://img.shields.io/badge/version-0.7.1-blue)
 
 # Smartschool for Home Assistant
 
