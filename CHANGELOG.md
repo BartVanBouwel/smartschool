@@ -2,6 +2,11 @@
 
 All notable changes to the Smartschool integration.
 
+## 0.7.0 - 2026-09-13
+
+### Removed
+- **Per-item agenda sensors** (`SmartschoolAgendaItemSensor`, one entity per upcoming planner item). Fully redundant with the Planner and Timetable calendar entities, which already show the same planner data (all real-world `plannedElementType` values were verified to be covered by the two calendars combined) — and unlike a plain sensor, their number changed on every poll as items entered/left the 4-week window, churning the entity registry. Removed the now-unused `_detect_item_type` and `_get_item_start` helpers along with it.
+
 ## 0.6.1 - 2026-09-13
 
 ### Bugfixes

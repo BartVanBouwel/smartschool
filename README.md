@@ -1,4 +1,4 @@
-![Version](https://img.shields.io/badge/version-0.6.1-blue)
+![Version](https://img.shields.io/badge/version-0.7.0-blue)
 
 # Smartschool for Home Assistant
 
@@ -11,7 +11,6 @@ Built on top of the [`smartschool`](https://github.com/svaningelgem/smartschool)
 ### Sensors
 - **Messages** — a separate sensor per relevant message (unread + messages from the last 14 days), with subject, sender, full body (HTML), recipients, attachments and `unread` status as attributes. Attachments are automatically downloaded locally (`www/smartschool_messages/`) and reachable via a `download_url` attribute. New messages automatically get a new sensor, without reloading the integration.
 - **Results** — a separate sensor per result/course combination, with score, percentage, feedback, teacher, period and publication status. New results automatically get a new sensor.
-- **Agenda items** — a sensor per planned item in the next 4 weeks (tests, tasks, lessons, study time, free time, ...), automatically categorized based on Smartschool's planner metadata. Refreshes on every poll.
 - **Student** — name and profile picture of the logged-in student.
 - **Planner Count** — total number of planned elements (diagnostic sensor).
 

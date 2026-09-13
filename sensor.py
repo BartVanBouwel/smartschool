@@ -22,9 +22,9 @@ _PLANNER_CACHE_TTL = timedelta(minutes=10)
 def _fetch_planned_elements(session):
     """Fetch all planner items via unfiltered raw JSON; the library filters too strictly by default.
 
-    Cached per session: this is called independently by the planner sensor, the student
-    sensor, and every single agenda item sensor (one per upcoming item) on every poll, so
-    without a cache a single poll cycle would trigger dozens of redundant full API fetches.
+    Cached per session: this is called independently by the planner sensor and the student
+    sensor on every poll, so without a cache a single poll cycle would trigger redundant
+    full API fetches.
     """
     now = dt_util.utcnow()
     cached_at = getattr(session, "_smartschool_planner_cache_at", None)
@@ -686,18 +686,6 @@ def _get_item_value(item, *keys):
     return None
 
 
-def _get_item_start(item):
-    """Determine the start time of a Smartschool item in both old and new API structures."""
-    period = _get_item_value(item, "period", "period_obj")
-    if period is not None:
-        start = _get_item_value(period, "date_time_from", "dateTimeFrom")
-        if start is not None:
-            return start
-
-    value = _get_item_value(item, "start", "dateTimeFrom", "date_time_from")
-    return value
-
-
 def _get_item_title(item):
     """Determine the title of an item in both old and new API structures."""
     value = _get_item_value(item, "title", "name")
@@ -721,48 +709,6 @@ def _stringify(value):
     return str(value)
 
 
-def _detect_item_type(item):
-    """Classify a planner item based on Smartschool's actual planner metadata.
-
-    NOTE: the keyword lists below match against Smartschool's own (Dutch) labels and
-    generic-type names, since that's the language the API returns them in — they are
-    not user-facing strings and must not be translated.
-    """
-    planned_type = _get_item_value(item, "plannedElementType", "planned_element_type", "type")
-    generic_type = _get_item_value(item, "genericType", "generic_type")
-    generic_name = _get_item_value(generic_type, "name") if isinstance(generic_type, dict) else getattr(generic_type, "name", None)
-    generic_name = generic_name or _get_item_value(item, "genericTypeName")
-    item_name = _get_item_value(item, "name", "title")
-    raw_text = " ".join(filter(None, [str(planned_type), str(generic_name), str(item_name)]))
-    text = raw_text.lower()
-
-    if planned_type == "planned-to-dos":
-        return "task", "✅"
-    if planned_type == "planned-school-activities":
-        return "school_activity", "🏫"
-    if planned_type == "planned-generics":
-        if generic_name and "studeer" in generic_name.lower():
-            return "study_time", "📚"
-        if generic_name and "vrije tijd" in generic_name.lower():
-            return "free_time", "⏳"
-        return "generic", "🗓️"
-    if generic_name and "studeer" in generic_name.lower():
-        return "study_time", "📚"
-    if generic_name and "vrije tijd" in generic_name.lower():
-        return "free_time", "⏳"
-
-    for token in ["toets", "test", "examen", "tentamen", "proef"]:
-        if token in text:
-            return "test", "📝"
-    for token in ["taak", "todo", "task", "opdracht", "huiswerk", "assignment", "workshop", "to-do"]:
-        if token in text:
-            return "task", "✅"
-    for token in ["les", "lesson", "agenda", "moment", "uurrooster", "cursus"]:
-        if token in text:
-            return "lesson", "🏫"
-    return "other", "📌"
-
-
 def _preferred_entity_id(domain, entry_title, suffix):
     """Build a child-specific entity id based on the entry title."""
     clean = slugify(entry_title or "smartschool")
@@ -778,7 +724,7 @@ def _entity_suffix_from_unique_id(entry_id, unique_id):
 
 
 async def async_setup_entry(hass, entry, async_add_entities):
-    """Set up Smartschool sensors (planner + agenda items)."""
+    """Set up Smartschool sensors (planner count, student, messages, results)."""
     session = hass.data[DOMAIN][entry.entry_id]
     entry_id = entry.entry_id
     child_name = entry.title or "Smartschool"
@@ -804,30 +750,10 @@ async def async_setup_entry(hass, entry, async_add_entities):
             result_sensor._apply_result(result)
             sensors.append(result_sensor)
 
-        elements = await hass.async_add_executor_job(_fetch_planned_elements, session)
-
-        now = dt_util.utcnow()
-        four_weeks_later = now + timedelta(weeks=4)
-        upcoming_items = []
-        for item in elements:
-            start = _get_item_start(item)
-            if start is None:
-                continue
-            parsed_start = _parse_date(start)
-            if parsed_start >= now and parsed_start <= four_weeks_later:
-                upcoming_items.append(item)
-
-        for idx, item in enumerate(upcoming_items):
-            sensors.append(SmartschoolAgendaItemSensor(hass, session, item, idx, entry.entry_id, child_name))
-
-        _LOGGER.info(
-            "Smartschool sensors created: %s (results + planner + %s agenda items)",
-            len(sensors),
-            len(upcoming_items),
-        )
+        _LOGGER.info("Smartschool sensors created: %s (results + planner)", len(sensors))
 
     except Exception as e:
-        _LOGGER.error("Error fetching agenda items: %s", e, exc_info=True)
+        _LOGGER.error("Error fetching Smartschool results: %s", e, exc_info=True)
 
     async_add_entities(sensors, True)
 
@@ -1099,54 +1025,6 @@ class SmartschoolStudentSensor(SensorEntity):
                 "participant_picture_urls": [],
             }
             self._attr_entity_picture = None
-
-    @property
-    def extra_state_attributes(self):
-        return self._attributes
-
-
-class SmartschoolAgendaItemSensor(SensorEntity):
-    """Sensor for a single Smartschool agenda item."""
-
-    def __init__(self, hass, session, item, idx, entry_id, child_name):
-        self.hass = hass
-        self._session = session
-        self._item_key = _get_item_value(item, "id") or idx
-        self._apply_item(item, entry_id, child_name)
-
-    def _apply_item(self, item, entry_id=None, child_name=None):
-        self._item = item
-        if entry_id is not None:
-            self._entry_id = entry_id
-        if child_name is not None:
-            self._child_name = child_name
-        title = _get_item_title(item)
-        item_type, icon = _detect_item_type(item)
-        self._attr_name = f"{self._child_name} Agenda {title}"
-        self._attr_unique_id = f"{self._entry_id}_smartschool_agenda_{self._item_key}"
-        self._attr_icon = icon
-        self._state = title
-        self._attributes = self._build_attributes()
-        self._attributes["item_type"] = item_type
-        self._attributes["category"] = item_type
-        self._attributes["icon"] = icon
-
-    def _build_attributes(self):
-        """Put all item details into attributes."""
-        attrs = _to_plain_value(self._item)
-        attrs["title"] = _get_item_title(self._item)
-        return attrs
-
-    async def async_update(self):
-        elements = await self.hass.async_add_executor_job(_fetch_planned_elements, self._session)
-        for item in elements:
-            if (_get_item_value(item, "id") or None) == self._item_key:
-                self._apply_item(item)
-                return
-
-    @property
-    def native_value(self):
-        return self._state
 
     @property
     def extra_state_attributes(self):
