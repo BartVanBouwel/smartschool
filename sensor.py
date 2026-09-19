@@ -11,6 +11,18 @@ from homeassistant.util import dt as dt_util, slugify
 from smartschool import Attachments, BoxType, MarkMessageUnread, Message, MessageHeaders
 from .const import DOMAIN, SCAN_INTERVAL  # noqa: F401 (SCAN_INTERVAL is read by HA's entity platform)
 
+def _slugify_filename(filename):
+    """Slugify a filename while preserving its extension.
+
+    `slugify()` on its own turns every dot into an underscore, so a plain
+    `slugify(attachment_name)` strips the file extension (e.g. "foo.pdf"
+    becomes "foo_pdf"). Without an extension, static file serving can't
+    determine the right Content-Type, so browsers won't render PDFs inline.
+    """
+    base, ext = os.path.splitext(filename)
+    return f"{slugify(base)}{ext.lower()}" if ext else slugify(filename)
+
+
 _LOGGER = logging.getLogger(__name__)
 _RESULT_CACHE_TTL = timedelta(minutes=10)
 _RESULT_LOG_DIR = "/config/custom_components/smartschool/logging"
@@ -247,11 +259,12 @@ def _fetch_message_records(session, child_name):
                 if _message_value(full_message, "attachment"):
                     for attachment in Attachments(session, message_id, box_type=BoxType.INBOX):
                         attachment_name = str(_message_value(attachment, "name") or "attachment")
+                        attachment_filename = _slugify_filename(attachment_name)
                         attachment_path = os.path.join(
                             _MESSAGE_DOWNLOAD_DIR,
                             slugify(child_name),
                             str(message_id),
-                            slugify(attachment_name),
+                            attachment_filename,
                         )
                         downloaded = False
                         try:
@@ -267,7 +280,7 @@ def _fetch_message_records(session, child_name):
                             "mime": _message_value(attachment, "mime"),
                             "size": _message_value(attachment, "size"),
                             "downloaded": downloaded,
-                            "download_url": f"/local/smartschool_messages/{slugify(child_name)}/{message_id}/{slugify(attachment_name)}",
+                            "download_url": f"/local/smartschool_messages/{slugify(child_name)}/{message_id}/{attachment_filename}",
                         })
                 content_cache[message_id] = (full_message, attachment_rows)
 

@@ -2,7 +2,7 @@
 {
   "domain": "smartschool",
   "name": "Smartschool",
-  "version": "0.8.1",
+  "version": "0.8.2",
   "documentation": "https://github.com/svaningelgem/smartschool",
   "requirements": [
     "smartschool==0.10.0",

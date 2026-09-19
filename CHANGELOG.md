@@ -2,6 +2,11 @@
 
 All notable changes to the Smartschool integration.
 
+## 0.8.2 - 2026-09-19
+
+### Bugfixes
+- **Downloaded attachments lost their file extension.** `slugify(attachment_name)` turns every dot into an underscore, so `"report.pdf"` was saved (and linked via `download_url`) as `report_pdf` — no `.pdf` extension. Static file serving then couldn't determine the correct `Content-Type`, so browsers wouldn't render PDFs inline (an `<iframe>` pointed at the file just showed nothing); explicit `download` links still worked since those force a save using the *original* filename regardless of the server's response headers. Added `_slugify_filename()`, which slugifies only the base name and keeps the original extension intact. Only affects attachments fetched from now on — files already saved under the old, extension-less names need their message re-fetched (e.g. via `mark_message_unread` then `mark_message_read`) to regenerate with the correct filename.
+
 ## 0.8.1 - 2026-09-13
 
 ### Bugfixes
