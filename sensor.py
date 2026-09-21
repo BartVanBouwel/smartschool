@@ -9,7 +9,7 @@ from homeassistant.components.sensor import SensorEntity
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.util import dt as dt_util, slugify
-from smartschool import Attachments, BoxType, MarkMessageUnread, Message, MessageHeaders
+from smartschool import Attachments, BoxType, MarkMessageUnread, Message, MessageComposerForm, MessageHeaders
 from .const import DOMAIN, SCAN_INTERVAL  # noqa: F401 (SCAN_INTERVAL is read by HA's entity platform)
 
 def _slugify_filename(filename):
@@ -29,43 +29,6 @@ _RESULT_CACHE_TTL = timedelta(minutes=10)
 _RESULT_LOG_DIR = "/config/custom_components/smartschool/logging"
 _MESSAGE_DOWNLOAD_DIR = "/config/www/smartschool_messages"
 _MESSAGE_CACHE_TTL = timedelta(minutes=10)
-_PLANNER_CACHE_TTL = timedelta(minutes=10)
-
-
-def _fetch_planned_elements(session):
-    """Fetch all planner items via unfiltered raw JSON; the library filters too strictly by default.
-
-    Cached per session: this is called independently by the planner sensor and the student
-    sensor on every poll, so without a cache a single poll cycle would trigger redundant
-    full API fetches.
-    """
-    now = dt_util.utcnow()
-    cached_at = getattr(session, "_smartschool_planner_cache_at", None)
-    if cached_at and now - cached_at < _PLANNER_CACHE_TTL:
-        return getattr(session, "_smartschool_planner_cache", [])
-
-    try:
-        user_id = session.authenticated_user["id"]
-        from_dt = dt_util.now().replace(hour=0, minute=0, second=0, microsecond=0)
-        to_dt = from_dt + timedelta(days=45)
-        raw = session.json(
-            f"/planner/api/v1/planned-elements/user/{user_id}",
-            data={
-                "from": from_dt.isoformat(),
-                "to": to_dt.isoformat(),
-            },
-        )
-        if not isinstance(raw, list):
-            _LOGGER.warning("Planner raw JSON response was not a list: %s", type(raw))
-            raw = []
-        else:
-            _LOGGER.info("Raw planner payload returned %s items", len(raw))
-        session._smartschool_planner_cache = raw
-        session._smartschool_planner_cache_at = now
-        return raw
-    except Exception as err:
-        _LOGGER.error("Raw planner fetch failed: %s", err, exc_info=True)
-        return []
 
 
 def _message_value(message, *keys):
@@ -778,13 +741,12 @@ def _entity_suffix_from_unique_id(entry_id, unique_id):
 
 
 async def async_setup_entry(hass, entry, async_add_entities):
-    """Set up Smartschool sensors (planner count, student, messages, results)."""
+    """Set up Smartschool sensors (student, messages, results)."""
     session = hass.data[DOMAIN][entry.entry_id]
     entry_id = entry.entry_id
     child_name = entry.title or "Smartschool"
 
     sensors = [
-        SmartschoolPlannerSensor(hass, session, entry_id, child_name),
         SmartschoolStudentSensor(hass, session, entry_id, child_name),
     ]
 
@@ -804,7 +766,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
             result_sensor._apply_result(result)
             sensors.append(result_sensor)
 
-        _LOGGER.info("Smartschool sensors created: %s (results + planner)", len(sensors))
+        _LOGGER.info("Smartschool sensors created: %s", len(sensors))
 
     except Exception as e:
         _LOGGER.error("Error fetching Smartschool results: %s", e, exc_info=True)
@@ -887,189 +849,93 @@ def _parse_date(date_value):
     return datetime.min.replace(tzinfo=dt_util.DEFAULT_TIME_ZONE)
 
 
-class SmartschoolPlannerSensor(SensorEntity):
-    """Original sensor showing the number of planned elements."""
+def _fetch_student_profile(session, child_name):
+    """Look up the student's own profile (name, class, picture) via the message-recipient search.
+
+    `session.authenticated_user` is the *login account*, which for a parent/co-account login is
+    the parent, not the child (e.g. name "Bart Van Bouwel", description "Vader van Stella Van
+    Bouwel") -- it can't be used to display the student's own name or picture. Searching the
+    message-composer's recipient lookup for the configured child name instead returns the
+    student's own MessageSearchUser record (real full name, class, own picture), which is exactly
+    what Smartschool shows when you'd start writing them a message.
+    """
+    auth = session.authenticated_user
+    auth_id = str(auth.get("id", "")) if isinstance(auth, dict) else ""
+    # authenticated_user's id looks like "6385_14957_2"; the middle segment is the numeric
+    # user id that MessageSearchUser.user_id also uses, letting us pick the right match.
+    id_parts = auth_id.split("_")
+    numeric_id = id_parts[1] if len(id_parts) >= 2 else None
+
+    form = MessageComposerForm(session)
+    form.refresh()
+    users, _groups = form.search_users(child_name)
+
+    match = None
+    if numeric_id:
+        match = next((u for u in users if str(u.user_id) == numeric_id), None)
+    if match is None and users:
+        match = users[0]
+    if match is None:
+        return None
+
+    class_name = (match.classname or "").removeprefix("Klas:").strip() or None
+    return {
+        "id": match.user_id,
+        "full_name": match.value,
+        "picture_url": match.picture,
+        "class_name": class_name,
+    }
+
+
+class SmartschoolStudentSensor(SensorEntity):
+    """Sensor with the name, class and profile picture of the student."""
 
     def __init__(self, hass, session, entry_id, child_name):
         self.hass = hass
         self._session = session
         self._entry_id = entry_id
         self._child_name = child_name
-        self._attr_name = f"{child_name} Planner Count"
-        self._attr_unique_id = f"{entry_id}_smartschool_planner_count"
-        self._state = None
-
-    async def async_update(self):
-        try:
-            _LOGGER.info("Planner sensor update started")
-            elements = await self.hass.async_add_executor_job(_fetch_planned_elements, self._session)
-            message_records = await self.hass.async_add_executor_job(
-                _fetch_message_records, self._session, self._child_name
-            )
-            _add_new_message_entities(
-                self.hass,
-                self._session,
-                self._entry_id,
-                self._child_name,
-                message_records,
-            )
-            results = await self.hass.async_add_executor_job(
-                _fetch_results, self._session, self._child_name
-            )
-            _add_new_result_entities(
-                self.hass,
-                self._session,
-                self._entry_id,
-                self._child_name,
-                results,
-            )
-            _LOGGER.info("Planner sensor raw element count: %s", len(elements))
-            for idx, item in enumerate(elements[:10]):
-                _LOGGER.info("Planner item[%s]: %s", idx, item)
-            self._state = len(elements)
-            _LOGGER.info("Planner sensor update succeeded: %s items", self._state)
-        except Exception as e:
-            _LOGGER.error("Error fetching planner data: %s", e, exc_info=True)
-            self._state = None
-
-    @property
-    def native_value(self):
-        return self._state
-
-
-def _extract_people_entries(item):
-    """Collect all users from a planner item for profile and avatar data."""
-    results = []
-    for collection_key in ("organisers", "participants"):
-        collection = _get_item_value(item, collection_key)
-        if isinstance(collection, dict):
-            for user_key in ("users", "persons"):
-                users = _get_item_value(collection, user_key)
-                if isinstance(users, list):
-                    for user in users:
-                        results.append(user)
-    return results
-
-
-class SmartschoolStudentSensor(SensorEntity):
-    """Sensor with the name and profile picture of the logged-in student."""
-
-    def __init__(self, hass, session, entry_id, child_name):
-        self.hass = hass
-        self._session = session
-        self._entry_id = entry_id
-        self._attr_name = f"{child_name} Student"
+        self._attr_name = child_name
         self._attr_unique_id = f"{entry_id}_smartschool_student"
         self._attr_icon = "mdi:account"
         self._state = "Unknown"
         self._attributes = {
             "student_id": None,
             "full_name": None,
-            "picture_url": None,
-            "organiser_picture_urls": [],
-            "participant_picture_urls": [],
+            "class_name": None,
         }
         self._attr_entity_picture = None
 
-    def _get_first_user_name(self, user):
-        if not isinstance(user, dict):
-            return None
-        name_fields = _get_item_value(user, "name")
-        if isinstance(name_fields, dict):
-            first_name = _get_item_value(name_fields, "startingWithFirstName") or _get_item_value(name_fields, "firstName")
-            last_name = _get_item_value(name_fields, "startingWithLastName") or _get_item_value(name_fields, "lastName")
-            if first_name and last_name:
-                return f"{first_name} {last_name}"
-            if first_name:
-                return first_name
-            if last_name:
-                return last_name
-        for key in ("displayName", "fullName", "name"):
-            if key in user:
-                return user[key]
-        return None
-
-    def _extract_student(self, items):
-        user_id = None
-        auth = self._session.authenticated_user
-        if isinstance(auth, dict):
-            user_id = auth.get("id") or auth.get("userId")
-
-        for item in items:
-            for user in _extract_people_entries(item):
-                if not isinstance(user, dict):
-                    continue
-                user_key = user.get("id") or user.get("userId")
-                if user_id and user_key == user_id:
-                    return {
-                        "id": user_key,
-                        "name": self._get_first_user_name(user),
-                        "picture_url": user.get("pictureUrl") or user.get("picture_url"),
-                    }
-
-        for item in items:
-            for user in _extract_people_entries(item):
-                if not isinstance(user, dict):
-                    continue
-                return {
-                    "id": user.get("id") or user.get("userId"),
-                    "name": self._get_first_user_name(user),
-                    "picture_url": user.get("pictureUrl") or user.get("picture_url"),
-                }
-
-        return {
-            "id": user_id,
-            "name": auth.get("name") if isinstance(auth, dict) else None,
-            "picture_url": auth.get("pictureUrl") if isinstance(auth, dict) else None,
-        }
-
     async def async_update(self):
+        # Discover new message/result sensors here so it still happens even when a child
+        # currently has zero of either (in which case their own sensors -- which otherwise
+        # do this themselves on every update -- don't exist yet to pick up the first one).
         try:
-            items = await self.hass.async_add_executor_job(_fetch_planned_elements, self._session)
-            student = self._extract_student(items)
-            display_name = student.get("name") or "Student"
-            picture_url = student.get("picture_url")
+            message_records = await self.hass.async_add_executor_job(
+                _fetch_message_records, self._session, self._child_name
+            )
+            _add_new_message_entities(self.hass, self._session, self._entry_id, self._child_name, message_records)
+        except Exception as err:
+            _LOGGER.error("Error discovering Smartschool messages: %s", err, exc_info=True)
 
-            self._state = display_name
+        try:
+            results = await self.hass.async_add_executor_job(_fetch_results, self._session, self._child_name)
+            _add_new_result_entities(self.hass, self._session, self._entry_id, self._child_name, results)
+        except Exception as err:
+            _LOGGER.error("Error discovering Smartschool results: %s", err, exc_info=True)
+
+        try:
+            profile = await self.hass.async_add_executor_job(_fetch_student_profile, self._session, self._child_name)
+            if profile is None:
+                raise ValueError("No matching student found in the message-recipient search")
+
+            self._state = profile["full_name"] or self._child_name
             self._attributes = {
-                "student_id": student.get("id"),
-                "full_name": display_name,
-                "picture_url": picture_url,
-                "organiser_picture_urls": [],
-                "participant_picture_urls": [],
+                "student_id": profile["id"],
+                "full_name": profile["full_name"],
+                "class_name": profile["class_name"],
             }
-            self._attr_entity_picture = picture_url
-
-            for item in items:
-                for user in _extract_people_entries(item):
-                    if not isinstance(user, dict):
-                        continue
-                    user_url = user.get("pictureUrl") or user.get("picture_url")
-                    if not user_url:
-                        continue
-                    if "organisers" in str(item):
-                        self._attributes["organiser_picture_urls"].append(
-                            {
-                                "id": user.get("id") or user.get("userId"),
-                                "name": self._get_first_user_name(user),
-                                "picture_url": user_url,
-                            }
-                        )
-                    if "participants" in str(item):
-                        self._attributes["participant_picture_urls"].append(
-                            {
-                                "id": user.get("id") or user.get("userId"),
-                                "name": self._get_first_user_name(user),
-                                "picture_url": user_url,
-                            }
-                        )
-
-            self._attributes["organiser_picture_urls"] = list(
-                {tuple(sorted((k, str(v)) for k, v in entry.items())): entry for entry in self._attributes["organiser_picture_urls"]}.values()
-            )
-            self._attributes["participant_picture_urls"] = list(
-                {tuple(sorted((k, str(v)) for k, v in entry.items())): entry for entry in self._attributes["participant_picture_urls"]}.values()
-            )
+            self._attr_entity_picture = profile["picture_url"]
 
         except Exception as e:
             _LOGGER.error("Error fetching Smartschool student data: %s", e, exc_info=True)
@@ -1077,9 +943,7 @@ class SmartschoolStudentSensor(SensorEntity):
             self._attributes = {
                 "student_id": None,
                 "full_name": None,
-                "picture_url": None,
-                "organiser_picture_urls": [],
-                "participant_picture_urls": [],
+                "class_name": None,
             }
             self._attr_entity_picture = None
 

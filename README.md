@@ -1,4 +1,4 @@
-![Version](https://img.shields.io/badge/version-0.22.1-blue)
+![Version](https://img.shields.io/badge/version-0.23.0-blue)
 
 # Smartschool for Home Assistant
 
@@ -11,8 +11,7 @@ Built on top of the [`smartschool`](https://github.com/svaningelgem/smartschool)
 ### Sensors
 - **Messages** — a separate sensor per relevant message (unread + messages from the last 14 days), with subject, sender, full body (HTML), recipients, attachments and `unread` status as attributes. Attachments are automatically downloaded locally (`www/smartschool_messages/`) and reachable via a `download_url` attribute. New messages automatically get a new sensor, without reloading the integration.
 - **Results** — a separate sensor per result/course combination, with score, percentage, feedback, teacher, period, publication status and `unread` status as attributes. New results automatically get a new sensor and start out unread; the `unread` flag is only ever cleared via the `smartschool.mark_result_read` action (e.g. clicking the result on a dashboard card) — it's left untouched when an existing result gets updated with fresh data, and survives Home Assistant restarts.
-- **Student** — name and profile picture of the logged-in student.
-- **Planner Count** — total number of planned elements (diagnostic sensor).
+- **Student** — the student's own name, class and profile picture (looked up via the message-recipient search, since the logged-in account is the parent/co-account, not the child).
 
 ### Calendars
 - **Planner** — all planned items (tests, tasks, activities, ...) as calendar events. Tasks/tests/to-bring items are titled with their Smartschool type (e.g. "Taak: Maak pagina 5", "Toets: Hoofdstuk 3"), read from Smartschool's own `assignmentType`.

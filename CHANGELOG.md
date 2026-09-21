@@ -2,6 +2,20 @@
 
 All notable changes to the Smartschool integration.
 
+## 0.23.0 - 2026-09-21
+
+### Bugfixes
+- **The Student sensor showed the wrong person**: `full_name` and `entity_picture` were scraped from whichever teacher happened to be the first "organiser" found in the planner data (falling back to `session.authenticated_user` if none matched), which itself is the *login account*, not the child -- on a parent/co-account login that's the parent, e.g. name "Bart Van Bouwel" for a login used to view "Stella". `startingWithFirstName`/`startingWithLastName` were also wrongly treated as separate first/last name parts and concatenated, when they're actually two full-name renderings of the same person (first-name-first vs. last-name-first) -- producing a visibly duplicated name on top of being the wrong person entirely.
+- Fixed by looking the student up via the message-composer's recipient search (`MessageComposerForm.search_users`) for the configured child name instead, matched to the login's own numeric user id -- this is the same lookup Smartschool itself uses when you start writing that student a message, and returns their real full name, own profile picture and class.
+
+### Features
+- **Student sensor now exposes `class_name`** (e.g. "1A02"), and the entity's friendly name is now just the configured child's name (e.g. "Stella") instead of "Stella Student".
+
+### Other
+- Removed the `organiser_picture_urls`/`participant_picture_urls` attributes -- unused noise scraped from planner data that had nothing reliably to do with the student's own profile.
+- Investigated exposing the class's home-room teacher ("klastitularis") too, but there's no dedicated field for it in any endpoint used by the integration or the underlying `smartschool` library -- the closest available data (a lesson's organiser) is just that subject's teacher, not necessarily the titularis, so it was left out rather than risk showing another wrong name.
+- **Removed the "Planner Count" diagnostic sensor** (`SmartschoolPlannerSensor`) -- it was only ever a development leftover from before the message/result sensors existed, and its raw item count served no purpose once the planner calendar took over showing that data. It also still fetched messages/results and discovered new sensors for them on every poll, which the message/result sensors already do themselves once they exist; that discovery step moved to the Student sensor's update instead, so a child with zero messages/results at setup time still picks up their first one automatically.
+
 ## 0.22.1 - 2026-09-21
 
 ### Other

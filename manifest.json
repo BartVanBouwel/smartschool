@@ -2,7 +2,7 @@
 {
   "domain": "smartschool",
   "name": "Smartschool",
-  "version": "0.22.1",
+  "version": "0.23.0",
   "documentation": "https://github.com/BartVanBouwel/smartschool",
   "requirements": [
     "smartschool==0.10.0",
