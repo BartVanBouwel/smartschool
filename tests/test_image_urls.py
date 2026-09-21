@@ -62,17 +62,17 @@ _spec.loader.exec_module(sensor)
 class FixRelativeImageUrlsTests(unittest.TestCase):
     def setUp(self):
         self.session = MagicMock()
-        self.session.creds.main_url = "kosh.smartschool.be"
+        self.session.creds.main_url = "myschool.smartschool.be"
 
     def test_relative_path_with_leading_slash_is_rewritten(self):
-        body = '<p>See <img src="/public/kosh/Images/foo.png" border="0"></p>'
+        body = '<p>See <img src="/public/myschool/Images/foo.png" border="0"></p>'
         result = sensor._fix_relative_image_urls(body, self.session)
-        self.assertIn('src="https://kosh.smartschool.be/public/kosh/Images/foo.png"', result)
+        self.assertIn('src="https://myschool.smartschool.be/public/myschool/Images/foo.png"', result)
 
     def test_relative_path_without_leading_slash_is_rewritten(self):
-        body = "<img src='public/kosh/Images/foo.png'>"
+        body = "<img src='public/myschool/Images/foo.png'>"
         result = sensor._fix_relative_image_urls(body, self.session)
-        self.assertIn("src='https://kosh.smartschool.be/public/kosh/Images/foo.png'", result)
+        self.assertIn("src='https://myschool.smartschool.be/public/myschool/Images/foo.png'", result)
 
     def test_absolute_http_url_is_untouched(self):
         body = '<img src="http://example.com/foo.png">'

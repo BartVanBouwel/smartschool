@@ -2,14 +2,14 @@
 {
   "domain": "smartschool",
   "name": "Smartschool",
-  "version": "0.8.2",
+  "version": "0.22.0",
   "documentation": "https://github.com/svaningelgem/smartschool",
   "requirements": [
     "smartschool==0.10.0",
     "requests>=2.32.0",
     "pyotp>=2.9.0"
   ],
-  "dependencies": [],
+  "dependencies": ["http", "frontend", "lovelace"],
   "codeowners": [
     "@BartVanBouwel"
   ],

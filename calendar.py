@@ -68,6 +68,24 @@ def _get_course_name(item):
     return None
 
 
+def _get_assignment_type_label(item):
+    """Return a short display label for the planner's assignment type (e.g. 'Taak', 'Toets', 'Meebrengen').
+
+    Smartschool's `assignmentType.name` includes a parenthesized qualifier (e.g. "Taak ( < 14
+    dagen )") that's only useful in the planner UI itself, so it's stripped for the calendar title.
+    """
+    assignment_type = _get_item_value(item, "assignmentType", "assignment_type")
+    if assignment_type is None:
+        return None
+    name = _get_item_value(assignment_type, "name")
+    if not name:
+        return None
+    label = str(name)
+    if "(" in label:
+        label = label[: label.index("(")].rstrip()
+    return label or None
+
+
 def _get_assignment_description(item):
     """Read a description if the planner provides one directly."""
     direct_description = _get_item_value(
@@ -184,7 +202,7 @@ def _is_lesson_item(item):
             return bool(courses)
         return True
 
-    if planned_type in {"planned-school-activities", "planned-assignments"}:
+    if planned_type in {"planned-school-activities", "planned-assignments", "planned-lesson-cluster-assignments"}:
         return False
 
     courses = _get_item_value(item, "courses")
@@ -514,6 +532,9 @@ def _item_to_event(item):
                 description = str(name)
     else:
         summary = title
+        type_label = _get_assignment_type_label(item)
+        if type_label:
+            summary = f"{type_label}: {title}"
         description = _get_assignment_description(item)
         location = ""
 

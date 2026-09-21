@@ -7,6 +7,7 @@ from dataclasses import asdict, is_dataclass
 from datetime import date, datetime, timedelta
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.util import dt as dt_util, slugify
 from smartschool import Attachments, BoxType, MarkMessageUnread, Message, MessageHeaders
 from .const import DOMAIN, SCAN_INTERVAL  # noqa: F401 (SCAN_INTERVAL is read by HA's entity platform)
@@ -136,8 +137,15 @@ def _message_is_unread(message):
     return not bool(value)
 
 
-def _write_messages_csv(child_name, records):
+def _logging_enabled(session):
+    """Whether CSV/debug-log export is turned on for this config entry (off by default)."""
+    return getattr(session, "_smartschool_logging_enabled", False)
+
+
+def _write_messages_csv(session, child_name, records):
     """Write the selected Smartschool messages per child to CSV."""
+    if not _logging_enabled(session):
+        return
     try:
         os.makedirs(_RESULT_LOG_DIR, exist_ok=True)
         path = os.path.join(_RESULT_LOG_DIR, f"{slugify(child_name)}_messages.csv")
@@ -184,8 +192,10 @@ def _unread_debug_log_path(child_name):
     return os.path.join(_RESULT_LOG_DIR, f"{slugify(child_name)}_unread_debug.log")
 
 
-def _log_unread_debug(child_name, message):
+def _log_unread_debug(session, child_name, message):
     """Write a debug line to the per-instance unread log file."""
+    if not _logging_enabled(session):
+        return
     try:
         os.makedirs(_RESULT_LOG_DIR, exist_ok=True)
         with open(_unread_debug_log_path(child_name), "a", encoding="utf-8") as log_file:
@@ -219,12 +229,13 @@ def _fetch_message_records(session, child_name):
     known_ids = getattr(session, "_smartschool_message_ids", set())
     session.ensure_authenticated()
     headers = list(MessageHeaders(session, box_type=BoxType.INBOX))
-    _log_unread_debug(child_name, f"--- fetch cycle: {len(headers)} headers received ---")
+    _log_unread_debug(session, child_name, f"--- fetch cycle: {len(headers)} headers received ---")
     selected = []
     for header in headers:
         message_date = _message_date(_message_value(header, "date", "send_date", "sendDate"))
         is_unread = _message_is_unread(header)
         _log_unread_debug(
+            session,
             child_name,
             f"header id={_message_value(header, 'id')} is_unread={is_unread} fields={_dump_header_fields(header)}",
         )
@@ -246,10 +257,10 @@ def _fetch_message_records(session, child_name):
             was_unread = _message_is_unread(header)
 
             if message_id in content_cache:
-                _log_unread_debug(child_name, f"id={message_id}: using cached content")
+                _log_unread_debug(session, child_name, f"id={message_id}: using cached content")
                 full_message, attachment_rows = content_cache[message_id]
             else:
-                _log_unread_debug(child_name, f"id={message_id}: fetching Message() now (was_unread={was_unread})")
+                _log_unread_debug(session, child_name, f"id={message_id}: fetching Message() now (was_unread={was_unread})")
                 full_message = next(iter(Message(session, message_id, box_type=BoxType.INBOX)))
                 try:
                     full_message.body = _fix_relative_image_urls(_message_value(full_message, "body"), session)
@@ -291,7 +302,7 @@ def _fetch_message_records(session, child_name):
                     # is allowed to change this.
                     try:
                         list(MarkMessageUnread(session, message_id, box_type=BoxType.INBOX))
-                        _log_unread_debug(child_name, f"id={message_id}: read status restored to unread")
+                        _log_unread_debug(session, child_name, f"id={message_id}: read status restored to unread")
                     except Exception as err:
                         _LOGGER.warning("Could not restore unread status for message %s: %s", message_id, err)
 
@@ -299,7 +310,7 @@ def _fetch_message_records(session, child_name):
         except Exception as err:
             _LOGGER.warning("Could not read Smartschool message %s: %s", message_id, err, exc_info=True)
 
-    _write_messages_csv(child_name, records)
+    _write_messages_csv(session, child_name, records)
     session._smartschool_messages_cache = records
     session._smartschool_messages_cache_at = now
     _LOGGER.info("Smartschool selected %s messages for %s", len(records), child_name)
@@ -424,8 +435,10 @@ def _result_graphic(result):
     if description and (achieved is None or total is None):
         try:
             achieved_text, total_text = str(description).split("/", 1)
-            achieved = achieved if achieved is not None else float(achieved_text.strip())
-            total = total if total is not None else float(total_text.strip())
+            # Smartschool renders scores with a comma as the decimal separator
+            # (e.g. "5,5/6"), which float() rejects -- normalize to a dot first.
+            achieved = achieved if achieved is not None else float(achieved_text.strip().replace(",", "."))
+            total = total if total is not None else float(total_text.strip().replace(",", "."))
         except (ValueError, TypeError):
             pass
     if percentage is None and achieved is not None and total:
@@ -493,8 +506,10 @@ def _result_to_row(result, course):
     }
 
 
-def _write_results_csv(child_name, rows):
+def _write_results_csv(session, child_name, rows):
     """Write the current results per child to a CSV snapshot."""
+    if not _logging_enabled(session):
+        return
     try:
         os.makedirs(_RESULT_LOG_DIR, exist_ok=True)
         path = os.path.join(_RESULT_LOG_DIR, f"{slugify(child_name)}_results.csv")
@@ -541,13 +556,13 @@ def _fetch_results(session, child_name):
         for result in results:
             for course in _result_courses(result):
                 rows.append(_result_to_row(result, course))
-        _write_results_csv(child_name, rows)
+        _write_results_csv(session, child_name, rows)
         session._smartschool_results_cache = results
         session._smartschool_results_cache_at = now
         _LOGGER.info("Smartschool returned %s results (%s course rows)", len(results), len(rows))
         return results
     except Exception as err:
-        _write_results_csv(child_name, [])
+        _write_results_csv(session, child_name, [])
         _LOGGER.error("Could not fetch Smartschool results: %s", err, exc_info=True)
         return []
 
@@ -592,9 +607,11 @@ def _add_new_result_entities(hass, session, entry_id, child_name, results):
         return
 
     async_add_entities(new_sensors, True)
+    result_sensors = hass.data[DOMAIN].setdefault("result_sensors", [])
+    result_sensors.extend(new_sensors)
 
 
-class SmartschoolResultSensor(SensorEntity):
+class SmartschoolResultSensor(SensorEntity, RestoreEntity):
     """Sensor for a single Smartschool result within a course."""
 
     _attr_icon = "mdi:school-outline"
@@ -612,8 +629,23 @@ class SmartschoolResultSensor(SensorEntity):
         self._course = course
         self._state = None
         self._attributes = {}
+        # New results start unread; existing results (re-created on HA restart)
+        # restore their previous unread status in async_added_to_hass().
+        self._unread = True
         self._attr_name = f"{child_name} Results {self._course_name} {self._result_name}"
         self._attr_unique_id = f"{entry_id}_smartschool_result_{self._result_id}_{self._course_id}"
+
+    async def async_added_to_hass(self):
+        await super().async_added_to_hass()
+        last_state = await self.async_get_last_state()
+        if last_state is not None and "unread" in last_state.attributes:
+            self._unread = bool(last_state.attributes["unread"])
+            self._attributes["unread"] = self._unread
+
+    def mark_read(self):
+        """Flag this result as read; never called for new/updated result data itself."""
+        self._unread = False
+        self._attributes["unread"] = False
 
     def _apply_result(self, result):
         self._result = result
@@ -642,6 +674,7 @@ class SmartschoolResultSensor(SensorEntity):
             "is_published": row["is_published"],
             "does_count": row["does_count"],
             "deleted": row["deleted"],
+            "unread": self._unread,
         }
 
     async def async_update(self):
@@ -799,6 +832,9 @@ async def async_setup_entry(hass, entry, async_add_entities):
                 "session": session,
                 "message_id": sensor._message_id,
             }
+
+    result_sensors = hass.data[DOMAIN].setdefault("result_sensors", [])
+    result_sensors.extend(sensor for sensor in sensors if isinstance(sensor, SmartschoolResultSensor))
 
     entity_registry = er.async_get(hass)
     for sensor in sensors:

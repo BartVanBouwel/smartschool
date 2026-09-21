@@ -2,6 +2,136 @@
 
 All notable changes to the Smartschool integration.
 
+## 0.22.0 - 2026-09-21
+
+### Features
+- **Planner calendar events for taken/toetsen/meebrengen are now prefixed with their Smartschool type** (e.g. "Taak: Maak pagina 5", "Toets: Hoofdstuk 3"), read from the planner's own `assignmentType.name` field (with its "( < 14 dagen )"-style qualifier stripped) rather than guessed from keywords in the title.
+
+### Bugfixes
+- **Assignments linked to a lesson cluster (`planned-lesson-cluster-assignments`) were misclassified as lessons** because they carry a `courses` field like real lessons do, so they showed up under the course name instead of their own task title. They're now correctly treated as assignments, same as plain `planned-assignments`.
+
+## 0.21.0 - 2026-09-20
+
+### Features
+- **CSV/debug-log export (`logging/<child>_*.csv`, `logging/<child>_unread_debug.log`) is now an opt-in option, off by default**, instead of always-on. Reachable via the integration's "Configure" button per config entry (Settings -> Devices & services -> Smartschool -> a child -> Configure). Changing it reloads that entry automatically. This also addresses the underlying reason it was worth turning off: the unread-debug log had no rotation or size limit and could grow to multiple hundred MB over a few weeks, containing real message content -- an explicit opt-in is a better default than "on forever, unbounded".
+
+## 0.20.0 - 2026-09-20
+
+### Features
+- **`smartschool-messages-card`'s `child` field is now a multi-select `children` list** (checkboxes in the editor), instead of a single child or "all". Old configs with the singular `child` string still work (`selectedChildren()` falls back to it) and get migrated to `children` the next time the editor is touched. The refresh button now scopes to all currently-selected children (one representative entity per child), or every configured child if none are selected.
+
+### Other
+- **Privacy pass before sharing the integration**: replaced example child name "Felix" and school subdomain "kosh.smartschool.be" in README.md, the results card's header comment, and the test file with generic placeholders ("Alex", "myschool.smartschool.be"); removed a changelog line's reference to a real child's debug CSV. The `logging/` folder (per-child message/result/calendar CSVs and debug logs) was already gitignored and was never committed. The integration itself has no hardcoded school, username, or child name anywhere -- `main_url`, credentials and child naming are all free-text config-flow fields, so it should work unmodified for any Smartschool school and any child names.
+
+## 0.19.0 - 2026-09-20
+
+### Bugfixes
+- **Found the actual root cause of "Custom element doesn't exist" via a matching issue in another HA integration that bundles a custom card the same way** (aex351/home-assistant-neerslag-card #58: "extra_module_url races the frontend's custom element registry"). `add_extra_js_url()` injects an eager `<script>` that runs *concurrently with* Home Assistant's own frontend bundle while it boots -- and that bundle replaces `window.customElements` with its own scoped registry shim during that boot. If our script's `customElements.define()` runs before that swap (which it usually does, and a warm cache makes it resolve *faster*, making the bug *more* likely, matching exactly what was observed), it registers on the old registry object while Lovelace later checks the new one -- so the card silently "doesn't exist" to it, unrelated to actual load timing/speed.
+- **Fix: stopped using `add_extra_js_url()` for our own card scripts entirely** (still used as a fallback only if Lovelace resource registration itself fails, e.g. a YAML-mode dashboard). Now relies solely on the Lovelace resource loader (added in 0.18.0), which runs after that frontend bundle/shim swap has already completed and doesn't hit this race. `_async_register_lovelace_resource()` now returns whether it succeeded so `async_setup()` knows when the `add_extra_js_url()` fallback is actually needed.
+
+## 0.18.1 - 2026-09-20
+
+### Bugfixes
+- **Reproduced the exact "Custom element doesn't exist" timing on a cold/hard load, self-heals on a subsequent normal reload (confirmed live: broken → F5 fixes it → Ctrl+F5 breaks it again → F5 fixes it again), even with both cards now registered as real Lovelace resources.** This confirms it's a genuine load-time race on a dashboard with dozens of competing resources -- Lovelace can try to build a card before this module's `import()` finishes, and doesn't appear to retry on its own. Both card scripts now fire a `window.dispatchEvent(new Event("ll-rebuild", ...))` right after registering their custom element -- the same event Home Assistant's own dashboard listens for to rebuild a view's cards -- so any instance already stuck in the broken state self-heals within a moment of this script finishing, instead of requiring the user to notice and manually reload.
+
+## 0.18.0 - 2026-09-20
+
+### Bugfixes
+- **Root cause of the intermittent "Custom element doesn't exist: smartschool-messages-card" found.** `frontend.add_extra_js_url()` injects a fire-and-forget `import(...).catch(...)` that is *not* awaited anywhere before Lovelace starts building the dashboard's cards -- confirmed live: the browser console showed "SMARTSCHOOL-MESSAGES-CARD is loaded" (so the module did load and register), yet the card still errored, because Lovelace had already given up before that happened. This only showed up on a dashboard with dozens of other resources competing for load time (confirmed: fine on a phone, broken on a heavier laptop dashboard) -- unlike the *actual* Lovelace resources list every other HACS card here goes through, which Home Assistant's own `load-resources.ts` properly awaits before building cards.
+- **Fix:** in addition to `add_extra_js_url` (kept as a fallback), the integration now also auto-registers the two card scripts (and mammoth.js) as real Lovelace resources via the same storage collection the "Add resource" UI uses (`_async_register_lovelace_resource()`), so they go through that awaited path like every other card. This touches internal, undocumented Lovelace APIs and is wrapped defensively -- if it can't register (e.g. a YAML-mode dashboard with no writable resource collection), it logs a warning instead of failing, and the resource can still be added by hand as a fallback (Settings -> Dashboards -> Resources, URL as before, type "JavaScript Module").
+
+## 0.17.1 - 2026-09-20
+
+### Features
+- **Both cards now log `console.info(...)` on load**, matching the pattern every other installed Lovelace card uses -- makes it possible to confirm in the browser console whether the script loaded and executed at all, instead of silence being ambiguous between "loaded fine, nothing to log" and "never loaded".
+
+## 0.17.0 - 2026-09-20
+
+### Features
+- **Added a refresh button to both cards** (top-right on `smartschool-results-card`, next to the "Messages"/"Berichten" title on `smartschool-messages-card`), calling the new `smartschool.refresh` service. On `smartschool-messages-card`, refreshing scopes to the currently selected child (`child` config) if one is set, otherwise refreshes every configured child, matching "the (selected) children" the card is currently showing.
+- **Added `smartschool.refresh` service** (`__init__.py`): clears each session's results/messages cache timestamps and then forces `homeassistant.update_entity` on that child's sensors -- plain `update_entity` alone isn't enough, since `_fetch_results`/`_fetch_message_records` still return cached data as long as it's within the normal TTL. Accepts an optional `entity_id` (one or more) to scope the refresh to specific children; omitted, every configured child is refreshed.
+- **Added the teacher's name to a result's detail view** (`smartschool-results-card`), pulled from the sensor's existing `Teacher` attribute.
+
+## 0.16.2 - 2026-09-20
+
+### Bugfixes
+- **A plain browser reload (F5) could show "Configuration error" for every card, while a hard reload (Ctrl+F5) always fixed it.** The card/mammoth scripts are registered as `type="module"`, which browsers cache very aggressively on the exact URL -- since that URL never changed between edits, a normal reload could keep reusing a stale (possibly from-before-a-fix, broken) cached copy indefinitely; only a hard reload bypasses that cache. Added a `?v=<mtime>` cache-busting query parameter (via `_asset_version()`) to each registered URL, derived from the file's last-modified time, so any future edit to these files automatically gets a fresh URL on the next Home Assistant start -- no more relying on users to hard-refresh, and no version number to remember bumping by hand.
+
+## 0.16.1 - 2026-09-20
+
+### Features
+- **Bundled `mammoth.browser.min.js`** (used by `smartschool-messages-card`'s inline .docx preview) into the integration (`www/mammoth.browser.min.js`) and auto-registered it via `frontend.add_extra_js_url(..., es5=True)` -- loaded as a classic script, not an ES module, since it's a UMD bundle that assigns to `window.mammoth` (a module's top-level `this` isn't `window`, which would break that assignment). The manually-added `/local/smartschool/mammoth.browser.min.js` Lovelace resource is no longer needed and can be removed.
+
+## 0.16.0 - 2026-09-20
+
+### Features
+- **Added `smartschool-messages-card`**, the same native-Lovelace-card treatment as `smartschool-results-card` applied to the messages mailbox view (`www/smartschool-messages-card.js`, auto-registered via `frontend.add_extra_js_url()`). Ported 1:1 from the hand-built `html-template-card` mailbox layout (message list + reading pane, avatar initials, attachment previews incl. inline PDF/docx viewing via `window.mammoth` if present). Marks a message read via a direct `hass.callService('smartschool', 'mark_message_read', ...)` call instead of the webhook/automation combo the old card needed -- the "Smartschool - mark message read (webhook)" automation is no longer required once a dashboard switches to this card. Has a visual editor (`title`, `language` EN/NL). Scans all `sensor.*_message_*` entities regardless of child, same as the original template (a combined mailbox across every configured login).
+
+## 0.15.0 - 2026-09-20
+
+### Features
+- **`smartschool-results-card` now shows "Counts towards average" (yes/no) for every result** in its detail view, so it's clear at a glance why a result is or isn't included.
+- **Added `include_non_counting` toggle** (editor "Details" section, defaults to off = previous behavior) that, when enabled, includes `does_count: false` results in the course/period average and the per-period chart too, alongside the normally-counting ones.
+
+## 0.14.1 - 2026-09-20
+
+### Bugfixes
+- **`achieved_points`/`total_points` were missing (showing as "0/0" in the results card) whenever Smartschool's score description used a comma as the decimal separator** (e.g. `"5,5/6"`, `"11,5/14"`) -- `_result_graphic()` parsed the fallback `achieved/total` split with `float()`, which raises on a comma decimal, was silently caught, and left both fields `None`. Confirmed live in a child's `logging/<child>_results.csv`: every result with a comma in its `graphic_description` had empty `achieved_points`/`total_points`, while plain-integer scores (e.g. `"6/9"`) parsed fine. Now normalizes the comma to a dot before parsing.
+- (Separately confirmed not a bug: a course/period showing "n.v.t." and no chart on the results card, e.g. Frans for one child, is correct when Smartschool itself marks every result in it `does_count: false` -- other courses in the same data have `does_count: true` results and render normally.)
+
+## 0.14.0 - 2026-09-20
+
+### Features
+- **`smartschool-results-card` editor is now in English**, with a new `language` field (English/Nederlands dropdown, defaults to `nl` for existing configs) that independently controls the language of the card's own rendered text (labels, "n/a"/"n.v.t.", date formatting, etc.) via a small `STRINGS` table.
+- **Editor now shows every color/icon field pre-filled with its default value** (already true structurally, via merging `DEFAULTS` into the form's `data`) and adds a "Reset colors & icons to default" button that resets just the seven color/icon fields, leaving `child`/`title`/`language`/`show_chart`/`show_average` untouched.
+
+## 0.13.0 - 2026-09-20
+
+### Features
+- **`smartschool-results-card` editor: real color pickers and icon pickers.** `course_color`/`period_color`/`result_color`/`unread_color` switched from plain text fields to `selector: {color_rgb: {}}` (a genuine RGB color wheel), stored as `[r, g, b]` arrays -- plain CSS-string values from an existing config still work (`colorToCss()` accepts both). Added `course_icon`/`period_icon`/`result_icon` (`selector: {icon: {}}`, a searchable mdi icon picker); `result_icon` falls back to the icon Smartschool itself provides on the sensor when left empty. Added a configurable `unread_color` for the "new result" dot, previously hardcoded gold.
+
+## 0.12.0 - 2026-09-20
+
+### Features
+- **`smartschool-results-card` visual editor now has a collapsible "Details" section** (`ha-form` `expandable` schema) with: `show_chart` and `show_average` toggles, and `course_color` / `period_color` / `result_color` text fields accepting any CSS color (hex or `rgba(...)`) for the three box levels' backgrounds. All five are optional and fall back to the previous look when left empty.
+
+## 0.11.1 - 2026-09-20
+
+### Bugfixes
+- **Card picker showed a spinner forever for `smartschool-results-card` and it couldn't be added.** `setConfig()` threw when `child` was missing/empty, and the picker/preview dialog calls `setConfig()` with a stub config (from `getStubConfig()`) without catching exceptions from it -- an empty `child` there (e.g. no result sensors loaded yet at that moment) left the preview stuck instead of showing a normal error. `setConfig()` no longer throws; a missing `child` now renders a plain "kies een kind" placeholder like any other custom card's incomplete-config state.
+
+## 0.11.0 - 2026-09-20
+
+### Features
+- **`smartschool-results-card` now has a visual editor.** Added `getConfigElement()`/`getStubConfig()` plus a `smartschool-results-card-editor` element built on `ha-form`, with a dropdown of children auto-detected from `sensor.<child>_result_*` entities currently in `hass.states` -- no more "Visual editor not supported" / hand-typed YAML needed to pick a child.
+- Card header now title-cases the child name when no explicit `title` is set (`child: alex` → header "Alex" instead of "alex"). An explicitly given `title` is still used verbatim.
+- Course/period averages now show "n.v.t." instead of a misleading "0%" when none of that course/period's results have `does_count: true` (e.g. Smartschool marking every result in that period as non-counting) -- the chart is likewise only omitted in that case, not because of any parsing error.
+
+## 0.10.2 - 2026-09-20
+
+### Bugfixes
+- **"Custom element not found: smartschool-results-card" after setup.** `frontend.add_extra_js_url()` was called from `async_setup()` without the integration declaring a dependency on `frontend` (`dependencies: []` in the manifest), so there was no guarantee the frontend component's internal state existed yet when we called it -- it could silently no-op or raise before ever registering the URL, meaning the card's JS was never added to the page. Declared `dependencies: ["http", "frontend"]` in `manifest.json` so HA sets those up first, and wrapped the call in a try/except with logging so a future failure there is visible instead of silently breaking card loading.
+
+## 0.10.1 - 2026-09-20
+
+### Features
+- **`smartschool-results-card`'s JS is now auto-registered on every frontend page load** via `frontend.add_extra_js_url()`, the same mechanism integrations like Browser Mod and Spook use. No more manual "add as a Lovelace resource" step -- the card is available right after a restart.
+
+## 0.10.0 - 2026-09-20
+
+### Features
+- **Added `smartschool-results-card`, a native Lovelace custom card bundled with the integration** (`www/smartschool-results-card.js`, served at `/smartschool_static/smartschool-results-card.js`). Replaces the hand-built `html-template-card` + webhook/automation combo used so far for showing a child's results: groups by course/period, shows a per-period percentage chart, and marks a result read via a direct `hass.callService()` call to `smartschool.mark_result_read` instead of a webhook (no automation needed for this card). Requires the file to be added as a Lovelace JavaScript-module resource; see README.
+
+## 0.9.1 - 2026-09-20
+
+### Bugfixes
+- **`mark_result_read` raised "Unknown Smartschool result entity" for a real, existing sensor.** Result sensors were registered into a dict keyed by `sensor.entity_id` right after an unawaited `async_add_entities(...)` call -- HA assigns `entity_id` asynchronously, so it wasn't necessarily set yet at that point, especially for results discovered after initial setup (via the periodic update path). That could capture a stale/empty key, so a later lookup by the sensor's real `entity_id` failed. Replaced the dict with a flat list of sensor instances, matched by their *current* `entity_id` at service-call time instead.
+
+## 0.9.0 - 2026-09-20
+
+### Features
+- **Result sensors now expose an `unread` attribute.** A result sensor starts with `unread: true` when it's first created (i.e. a new result appeared). Refetching/updating an *existing* result (`async_update`, `_apply_result`) never touches this flag, so it stays as-is until explicitly cleared. Added a `mark_result_read` service (mirrors `mark_message_read`'s entity-lookup pattern) to flip a result's `unread` attribute to `false`, meant to be called from a dashboard card on click. Since Smartschool itself has no server-side concept of "read" for results, this status is tracked purely locally and survives HA restarts via `RestoreEntity`.
+
 ## 0.8.2 - 2026-09-19
 
 ### Bugfixes

@@ -11,11 +11,16 @@ _LOGGER = logging.getLogger(__name__)
 CONF_MAIN_URL = "main_url"
 CONF_MFA = "mfa"
 CONF_NAME = "name"
+CONF_ENABLE_LOGGING = "enable_logging"
 
 
 class SmartschoolConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Config flow for the Smartschool integration."""
     VERSION = 1
+
+    @staticmethod
+    def async_get_options_flow(config_entry):
+        return SmartschoolOptionsFlow()
 
     async def async_step_user(self, user_input=None):
         errors = {}
@@ -84,3 +89,17 @@ class SmartschoolConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 "mfa_hint": "Use YYYY-MM-DD (date of birth) or a Google Authenticator secret"
             }
         )
+
+
+class SmartschoolOptionsFlow(config_entries.OptionsFlow):
+    """Per-child options, reachable via the integration's "Configure" button."""
+
+    async def async_step_init(self, user_input=None):
+        if user_input is not None:
+            return self.async_create_entry(title="", data=user_input)
+
+        current = self.config_entry.options.get(CONF_ENABLE_LOGGING, False)
+        schema = vol.Schema({
+            vol.Optional(CONF_ENABLE_LOGGING, default=current): bool,
+        })
+        return self.async_show_form(step_id="init", data_schema=schema)

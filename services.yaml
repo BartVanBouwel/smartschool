@@ -39,3 +39,30 @@ mark_message_unread:
         number:
           min: 1
           mode: box
+
+mark_result_read:
+  name: Mark result as read
+  description: Flag a Smartschool result sensor's unread attribute as read (locally tracked only; Smartschool itself has no read/unread status for results).
+  fields:
+    entity_id:
+      name: Result entity
+      description: The Smartschool result sensor entity.
+      required: true
+      selector:
+        entity:
+          integration: smartschool
+          domain: sensor
+
+refresh:
+  name: Refresh
+  description: Force an immediate re-fetch from Smartschool, bypassing the normal cache. Without entity_id, every configured child is refreshed.
+  fields:
+    entity_id:
+      name: Entity
+      description: One or more Smartschool sensor entities belonging to the child/children to refresh. Leave empty to refresh all configured children.
+      required: false
+      selector:
+        entity:
+          integration: smartschool
+          domain: sensor
+          multiple: true
