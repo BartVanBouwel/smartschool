@@ -2,8 +2,8 @@
 {
   "domain": "smartschool",
   "name": "Smartschool",
-  "version": "0.22.0",
-  "documentation": "https://github.com/svaningelgem/smartschool",
+  "version": "0.22.1",
+  "documentation": "https://github.com/BartVanBouwel/smartschool",
   "requirements": [
     "smartschool==0.10.0",
     "requests>=2.32.0",
@@ -15,6 +15,6 @@
   ],
   "iot_class": "cloud_polling",
   "config_flow": true,
-  "issue_tracker": "https://github.com/svaningelgem/smartschool/issues",
+  "issue_tracker": "https://github.com/BartVanBouwel/smartschool/issues",
   "logo": "logo.png"
 }

@@ -2,6 +2,11 @@
 
 All notable changes to the Smartschool integration.
 
+## 0.22.1 - 2026-09-21
+
+### Other
+- **Made the integration installable as a HACS custom repository**: added `hacs.json` (`content_in_root: true`, since the standalone repo has the integration files at its root rather than under `custom_components/`) and a `LICENSE` file (MIT), both required by HACS' validation. Fixed `manifest.json`'s `documentation`/`issue_tracker` links, which incorrectly pointed at the upstream `smartschool` Python library's repo instead of this integration's own repo. Documented the HACS custom-repository install steps in the README. Not submitted to the HACS default store (would additionally need GitHub topics and a `hacs/action` validation workflow) — this only covers manual "custom repository" installs.
+
 ## 0.22.0 - 2026-09-21
 
 ### Features

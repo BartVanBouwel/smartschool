@@ -1,4 +1,4 @@
-![Version](https://img.shields.io/badge/version-0.22.0-blue)
+![Version](https://img.shields.io/badge/version-0.22.1-blue)
 
 # Smartschool for Home Assistant
 
@@ -47,6 +47,18 @@ The integration never fetches the content of an unread message on its own (that 
 - Debug logging of all Smartschool API requests/responses (with redaction of passwords/tokens) — enable it via the standard Home Assistant `logger` configuration on `custom_components.smartschool`.
 
 ## Installation
+
+### Via HACS (custom repository)
+
+This repository isn't in the default HACS store, so add it as a custom repository:
+
+1. HACS → the **⋮** menu (top right) → **Custom repositories**.
+2. Repository: `https://github.com/BartVanBouwel/smartschool`, type: **Integration**.
+3. Find "Smartschool" in HACS and install it.
+4. Restart Home Assistant.
+5. Add the integration via **Settings → Devices & services → Add integration → Smartschool**.
+
+### Manually
 
 1. Copy the `smartschool` folder into `config/custom_components/`.
 2. Restart Home Assistant.
