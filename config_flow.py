@@ -12,6 +12,7 @@ CONF_MAIN_URL = "main_url"
 CONF_MFA = "mfa"
 CONF_NAME = "name"
 CONF_ENABLE_LOGGING = "enable_logging"
+CONF_CREATE_PERSON = "create_person"
 
 
 class SmartschoolConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -98,8 +99,10 @@ class SmartschoolOptionsFlow(config_entries.OptionsFlow):
         if user_input is not None:
             return self.async_create_entry(title="", data=user_input)
 
-        current = self.config_entry.options.get(CONF_ENABLE_LOGGING, False)
+        current_logging = self.config_entry.options.get(CONF_ENABLE_LOGGING, False)
+        current_person = self.config_entry.options.get(CONF_CREATE_PERSON, False)
         schema = vol.Schema({
-            vol.Optional(CONF_ENABLE_LOGGING, default=current): bool,
+            vol.Optional(CONF_ENABLE_LOGGING, default=current_logging): bool,
+            vol.Optional(CONF_CREATE_PERSON, default=current_person): bool,
         })
         return self.async_show_form(step_id="init", data_schema=schema)

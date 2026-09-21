@@ -2,6 +2,11 @@
 
 All notable changes to the Smartschool integration.
 
+## 0.24.0 - 2026-09-21
+
+### Features
+- **Optional `person.<child>` entity**, so a child can be used directly on dashboards (e.g. the built-in "Person" card/badge, or any card with a person picker) instead of only via the Student sensor. Off by default; enable it per child via the integration's **Configure** button. Kept in sync with the Student sensor's name and profile picture on every update. Created through Home Assistant's own person storage collection (the same mechanism `Settings -> People` uses), so it's a normal, user-editable entity that isn't removed if the integration itself is later removed.
+
 ## 0.23.0 - 2026-09-21
 
 ### Bugfixes

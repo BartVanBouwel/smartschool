@@ -11,6 +11,7 @@ from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.util import dt as dt_util, slugify
 from smartschool import Attachments, BoxType, MarkMessageUnread, Message, MessageComposerForm, MessageHeaders
 from .const import DOMAIN, SCAN_INTERVAL  # noqa: F401 (SCAN_INTERVAL is read by HA's entity platform)
+from .config_flow import CONF_CREATE_PERSON
 
 def _slugify_filename(filename):
     """Slugify a filename while preserving its extension.
@@ -887,6 +888,26 @@ def _fetch_student_profile(session, child_name):
     }
 
 
+async def _async_sync_person_entity(hass, name, picture_url):
+    """Create or update a `person.<name>` entity with the student's Smartschool picture.
+
+    Writes through the same storage collection Settings -> People uses, so the result is a
+    normal, user-editable person entity -- removing this integration later won't remove it.
+    `hass.data["person"]` is an internal structure (`(yaml_collection, storage_collection,
+    entity_component)`), not a public API, so this is wrapped in a try/except at the call site
+    in case its shape ever changes in a future Home Assistant version.
+    """
+    person_data = hass.data.get("person")
+    if not person_data:
+        return
+    storage_collection = person_data[1]
+    existing = next((p for p in storage_collection.async_items() if p.get("name") == name), None)
+    if existing is None:
+        await storage_collection.async_create_item({"name": name, "picture": picture_url})
+    elif picture_url and existing.get("picture") != picture_url:
+        await storage_collection.async_update_item(existing["id"], {"picture": picture_url})
+
+
 class SmartschoolStudentSensor(SensorEntity):
     """Sensor with the name, class and profile picture of the student."""
 
@@ -936,6 +957,13 @@ class SmartschoolStudentSensor(SensorEntity):
                 "class_name": profile["class_name"],
             }
             self._attr_entity_picture = profile["picture_url"]
+
+            entry = self.hass.config_entries.async_get_entry(self._entry_id)
+            if entry and entry.options.get(CONF_CREATE_PERSON, False):
+                try:
+                    await _async_sync_person_entity(self.hass, self._child_name, profile["picture_url"])
+                except Exception as err:
+                    _LOGGER.error("Error syncing Smartschool person entity: %s", err, exc_info=True)
 
         except Exception as e:
             _LOGGER.error("Error fetching Smartschool student data: %s", e, exc_info=True)

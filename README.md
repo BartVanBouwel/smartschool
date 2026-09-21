@@ -1,4 +1,4 @@
-![Version](https://img.shields.io/badge/version-0.23.0-blue)
+![Version](https://img.shields.io/badge/version-0.24.0-blue)
 
 # Smartschool for Home Assistant
 
@@ -42,6 +42,7 @@ The integration never fetches the content of an unread message on its own (that 
 ### Other
 - Multiple children/accounts at once: each Smartschool login is a separate config entry, with sensors/calendars per child.
 - Relative image paths (`<img src="/...">`) in message content are automatically rewritten to absolute Smartschool URLs, so images also display correctly outside of Smartschool (e.g. in a Lovelace card).
+- Optional `person.<child>` entity, kept in sync with the Student sensor's name and picture — off by default, turn it on per child via the integration's **Configure** button (Settings → Devices & services → Smartschool → the child → Configure). Created through the same mechanism as **Settings → People**, so it's a normal, user-editable person entity that survives removing the integration.
 - Optional CSV export of messages/results and an unread-status debug log per child in `logging/` (handy for debugging or external processing) — off by default, turn it on per child via the integration's **Configure** button (Settings → Devices & services → Smartschool → the child → Configure).
 - Debug logging of all Smartschool API requests/responses (with redaction of passwords/tokens) — enable it via the standard Home Assistant `logger` configuration on `custom_components.smartschool`.
 
