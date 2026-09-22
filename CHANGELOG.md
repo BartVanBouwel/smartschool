@@ -2,6 +2,14 @@
 
 All notable changes to the Smartschool integration.
 
+## 0.24.1 - 2026-09-22
+
+### Bugfixes
+- **The optional person entity read as a real household member**: it was created as plain `person.<child>` (e.g. `person.stella`), indistinguishable from a normal, user-managed person entity -- including the *login* capability that implies, even though it's just a presence/picture mirror of the Student sensor with no linked Home Assistant user. Now created as `person.<child>_student` (e.g. `person.stella_student`, display name "Stella (student)") so it reads unambiguously as what it is. Existing installs get their old plain-named entity automatically removed and replaced by the correctly-named one on the next update.
+
+### Other
+- Documented that a Home Assistant OS/container rebuild (not a plain Core restart) clears the cached Smartschool login session, so expect one "new device" login notification from Smartschool right after one -- this is expected, not a sign of a compromised account.
+
 ## 0.24.0 - 2026-09-21
 
 ### Features

@@ -888,11 +888,15 @@ def _fetch_student_profile(session, child_name):
     }
 
 
-async def _async_sync_person_entity(hass, name, picture_url):
-    """Create or update a `person.<name>` entity with the student's Smartschool picture.
+async def _async_sync_person_entity(hass, child_name, picture_url):
+    """Create or update a `person.<child>_student` entity with the student's Smartschool picture.
 
     Writes through the same storage collection Settings -> People uses, so the result is a
     normal, user-editable person entity -- removing this integration later won't remove it.
+    Named "<Child> (student)" (entity id `person.<child>_student`) rather than plainly `<Child>`,
+    so it doesn't read as -- or collide with -- a household member's own person entity: it has no
+    linked HA user and can't be used to log in, it's purely a presence/picture mirror of the
+    Student sensor.
     `hass.data["person"]` is an internal structure (`(yaml_collection, storage_collection,
     entity_component)`), not a public API, so this is wrapped in a try/except at the call site
     in case its shape ever changes in a future Home Assistant version.
@@ -901,6 +905,16 @@ async def _async_sync_person_entity(hass, name, picture_url):
     if not person_data:
         return
     storage_collection = person_data[1]
+    name = f"{child_name.capitalize()} (student)"
+
+    # Older versions of this integration created the entity as plain "<Child>" (person.<child>).
+    # Drop that one so a correctly-named entity can be created in its place.
+    legacy = next(
+        (p for p in storage_collection.async_items() if p.get("name") == child_name.capitalize()), None
+    )
+    if legacy is not None:
+        await storage_collection.async_delete_item(legacy["id"])
+
     existing = next((p for p in storage_collection.async_items() if p.get("name") == name), None)
     if existing is None:
         await storage_collection.async_create_item({"name": name, "picture": picture_url})
