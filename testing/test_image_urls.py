@@ -23,9 +23,10 @@ def _stub_module(name, **attrs):
 
 _stub_module("homeassistant")
 _stub_module("homeassistant.components")
-_stub_module("homeassistant.components.sensor", SensorEntity=object)
+_stub_module("homeassistant.components.sensor", SensorEntity=type("SensorEntity", (), {}))
 _stub_module("homeassistant.helpers")
 _stub_module("homeassistant.helpers.entity_registry")
+_stub_module("homeassistant.helpers.restore_state", RestoreEntity=type("RestoreEntity", (), {}))
 _stub_module(
     "homeassistant.util",
     dt=types.SimpleNamespace(DEFAULT_TIME_ZONE=None, now=lambda: None, utcnow=lambda: None),
@@ -37,6 +38,7 @@ _stub_module(
     BoxType=object,
     MarkMessageUnread=object,
     Message=object,
+    MessageComposerForm=object,
     MessageHeaders=object,
 )
 
@@ -50,6 +52,7 @@ sys.modules.setdefault("custom_components", types.ModuleType("custom_components"
 sys.modules["custom_components"].__path__ = [str(_PACKAGE_ROOT.parent)]
 sys.modules["custom_components.smartschool"] = _pkg
 _stub_module("custom_components.smartschool.const", DOMAIN="smartschool", SCAN_INTERVAL=None)
+_stub_module("custom_components.smartschool.config_flow", CONF_CREATE_PERSON="create_person")
 
 _spec = importlib.util.spec_from_file_location(
     "custom_components.smartschool.sensor", _PACKAGE_ROOT / "sensor.py"

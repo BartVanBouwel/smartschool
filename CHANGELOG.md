@@ -2,6 +2,11 @@
 
 All notable changes to the Smartschool integration.
 
+## 0.24.2 - 2026-09-24
+
+### Other
+- Renamed `tests/` to `testing/` and fixed the stubbed Home Assistant/`smartschool` modules in `test_image_urls.py` (`RestoreEntity`, `MessageComposerForm`, `config_flow`), which had gone stale as `sensor.py` picked up new imports and broke the test run.
+
 ## 0.24.1 - 2026-09-22
 
 ### Bugfixes
