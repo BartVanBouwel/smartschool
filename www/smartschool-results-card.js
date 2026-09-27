@@ -419,7 +419,7 @@ class SmartschoolResultsCard extends HTMLElement {
       byCourse.get(it.course).push(it);
     }
 
-    const countsForAvg = (it) => opts.include_non_counting || it.doesCount;
+    const countsForAvg = (it) => it.total > 0 && (opts.include_non_counting || it.doesCount);
 
     let html = "";
     for (const [course, courseItems] of byCourse) {

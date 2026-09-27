@@ -2,6 +2,14 @@
 
 All notable changes to the Smartschool integration.
 
+## 0.24.3 - 2026-09-27
+
+### Bugfixes
+- **`smartschool-results-card` counted ungraded/absent results (0/0) towards the average and chart.** A result with no valid total (e.g. an excused-absence entry showing "-") has `total_points: 0`, so its 0% dragged down the course/period average and appeared as a 0% point on the chart even though it isn't a real score. `countsForAvg` now also requires `total > 0`, independent of the "does_count"/"include non-counting" setting.
+
+### Other
+- Documented every YAML property of both dashboard cards in `README.md` (name, type, default, possible values).
+
 ## 0.24.2 - 2026-09-24
 
 ### Other

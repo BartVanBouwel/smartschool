@@ -1,4 +1,4 @@
-![Version](https://img.shields.io/badge/version-0.24.1-blue)
+![Version](https://img.shields.io/badge/version-0.24.3-blue)
 
 # Smartschool for Home Assistant
 
@@ -31,13 +31,84 @@ The integration never fetches the content of an unread message on its own (that 
   title: Alex
   child: alex   # matches the sensor.<child>_result_* entities
   ```
-  No automation or webhook needed for this card — it calls `smartschool.mark_result_read` directly. Has a visual editor (English UI; child picker dropdown auto-detected from existing result sensors) — adding the card through the dashboard UI works without touching YAML. A `language` field (English/Nederlands) independently controls the language the *card itself* renders its text in, defaulting to `nl`. A collapsible "Details" section in the editor exposes `show_chart` / `show_average` (booleans), `include_non_counting` (include `does_count: false` results in the average/chart too, default off), `course_icon` / `period_icon` / `result_icon` (mdi icon pickers, `result_icon` empty = use the icon Smartschool provides), and `course_color` / `period_color` / `result_color` / `unread_color` (real RGB color pickers, stored as `[r, g, b]`) — plus a "reset to default" button for those seven color/icon fields. Each result's detail view also shows whether it counts towards the average.
+
+  No automation or webhook needed for this card — it calls `smartschool.mark_result_read` directly. Has a visual editor (English UI; child picker dropdown auto-detected from existing result sensors) — adding the card through the dashboard UI works without touching YAML. Each result's detail view also shows whether it counts towards the average.
+
+  All YAML properties:
+
+  | Property | Type | Default | Possible values |
+  |---|---|---|---|
+  | `type` | string | — (required) | `custom:smartschool-results-card` |
+  | `child` | string | — (required) | a child slug matching `sensor.<child>_result_*` entities, e.g. `alex` |
+  | `title` | string | *(none — falls back to the title-cased `child`)* | any text |
+  | `language` | string | `nl` | `nl`, `en` — language the *card itself* renders its text in (independent of the editor UI, which is always English) |
+  | `show_chart` | boolean | `true` | `true`, `false` — show the per-period percentage chart |
+  | `show_average` | boolean | `true` | `true`, `false` — show the average per period/course |
+  | `include_non_counting` | boolean | `false` | `true`, `false` — include results with `does_count: false` in the average/chart too |
+  | `course_icon` | string (mdi icon) | `mdi:book-education-outline` | any `mdi:*` icon name |
+  | `period_icon` | string (mdi icon) | `mdi:calendar-range` | any `mdi:*` icon name |
+  | `result_icon` | string (mdi icon) | *(empty)* | any `mdi:*` icon name, or empty to use the icon Smartschool provides for that result |
+  | `course_color` | array `[r, g, b]` | `[33, 150, 243]` | RGB values 0–255; applied semi-transparent as course background |
+  | `period_color` | array `[r, g, b]` | `[220, 230, 242]` | RGB values 0–255; period background |
+  | `result_color` | array `[r, g, b]` | `[23, 23, 23]` | RGB values 0–255; result background |
+  | `unread_color` | array `[r, g, b]` | `[255, 215, 0]` | RGB values 0–255; color of the new/unread result dot |
+
+  The `course_icon`/`period_icon`/`result_icon`/`course_color`/`period_color`/`result_color`/`unread_color` fields live in a collapsible "Details" section in the visual editor, with a "reset to default" button for all seven at once.
+
+  Example with everything set:
+  ```yaml
+  type: custom:smartschool-results-card
+  title: Alex
+  child: alex
+  language: en
+  show_chart: true
+  show_average: true
+  include_non_counting: false
+  course_icon: mdi:book-education-outline
+  period_icon: mdi:calendar-range
+  result_icon: ""
+  course_color: [33, 150, 243]
+  period_color: [220, 230, 242]
+  result_color: [23, 23, 23]
+  unread_color: [255, 215, 0]
+  ```
+
 - **`smartschool-messages-card`** — the same native-card treatment applied to the messages mailbox view (`www/smartschool-messages-card.js`, also auto-registered). A message list + reading pane (avatar initials, attachments with inline PDF/docx preview via `window.mammoth` if present on the page). Add it to a dashboard:
   ```yaml
   type: custom:smartschool-messages-card
   title: Berichten
   ```
+
   No automation or webhook needed — clicking an unread message calls `smartschool.mark_message_read` directly (the old "Smartschool - mark message read (webhook)" automation can be removed once a dashboard uses this card instead of the old `html-template-card`). Has a visual editor (`title`, `language` EN/NL, a `children` multi-select to limit the mailbox to specific kids). Defaults to scanning all `sensor.*_message_*` entities regardless of child — a combined mailbox across every configured login. `mammoth.browser.min.js` (used for inline .docx attachment preview) is bundled and auto-registered too — a manually-added `/local/...` Lovelace resource for it can be removed.
+
+  All YAML properties:
+
+  | Property | Type | Default | Possible values |
+  |---|---|---|---|
+  | `type` | string | — (required) | `custom:smartschool-messages-card` |
+  | `title` | string | *(none)* | any text |
+  | `language` | string | `nl` | `nl`, `en` — language the card renders its text in |
+  | `children` | array of strings | `[]` (empty = all children combined) | any child slugs matching `sensor.<child>_message_*` entities, e.g. `[alex, stella]` |
+  | `show_avatars` | boolean | `true` | `true`, `false` — show avatar initials next to messages |
+  | `show_attachment_preview` | boolean | `true` | `true`, `false` — inline preview for PDF/docx attachments (`false` = always just a download link) |
+  | `unread_color` | array `[r, g, b]` or `null` | `null` (theme primary color) | RGB values 0–255, or omit for the theme default |
+  | `selected_color` | array `[r, g, b]` or `null` | `null` (theme default) | RGB values 0–255, or omit for the theme default |
+
+  The `show_avatars`/`show_attachment_preview`/`unread_color`/`selected_color` fields live in a collapsible "Details" section in the visual editor, with a "reset to default" button for the two colors.
+
+  > The older single-string `child:` field (pre-dating the `children` multi-select) is still honored on existing configs, but new configs should use `children`.
+
+  Example with everything set:
+  ```yaml
+  type: custom:smartschool-messages-card
+  title: Berichten
+  language: nl
+  children: [alex, stella]
+  show_avatars: true
+  show_attachment_preview: true
+  unread_color: [255, 152, 0]
+  selected_color: [230, 240, 255]
+  ```
 
 ### Other
 - Multiple children/accounts at once: each Smartschool login is a separate config entry, with sensors/calendars per child.
