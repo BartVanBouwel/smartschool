@@ -47,6 +47,7 @@ const DEFAULTS = {
   show_chart: true,
   show_average: true,
   include_non_counting: false,
+  sort_order: "alphabetical",
   course_color: [33, 150, 243],
   period_color: [220, 230, 242],
   result_color: [23, 23, 23],
@@ -65,6 +66,7 @@ const LABELS = {
   details: "Details",
   show_chart: "Show chart",
   show_average: "Show average",
+  sort_order: "Sort courses by",
   include_non_counting: 'Include non-counting results ("does_count: false") in average/chart',
   course_color: "Course background color (applied semi-transparent)",
   period_color: "Period background color",
@@ -188,6 +190,18 @@ class SmartschoolResultsCardEditor extends HTMLElement {
         icon: "mdi:tune",
         flatten: true,
         schema: [
+          {
+            name: "sort_order",
+            selector: {
+              select: {
+                mode: "dropdown",
+                options: [
+                  { value: "alphabetical", label: "Alphabetical / Alfabetisch" },
+                  { value: "recent", label: "Most recent first / Meest recent bovenaan" },
+                ],
+              },
+            },
+          },
           { name: "show_chart", selector: { boolean: {} } },
           { name: "show_average", selector: { boolean: {} } },
           { name: "include_non_counting", selector: { boolean: {} } },
@@ -419,10 +433,18 @@ class SmartschoolResultsCard extends HTMLElement {
       byCourse.get(it.course).push(it);
     }
 
+    const recent = opts.sort_order === "recent";
+    const ts = (it) => { const v = new Date(it.date).getTime(); return Number.isNaN(v) ? 0 : v; };
+    const newest = (list) => list.reduce((m, it) => Math.max(m, ts(it)), 0);
+    // Orders [key, items] groups: A-Z by key, or by their newest result (newest first).
+    const orderGroups = (map) => Array.from(map).sort((a, b) =>
+      recent ? newest(b[1]) - newest(a[1]) || String(a[0]).localeCompare(String(b[0]), opts.language)
+             : String(a[0]).localeCompare(String(b[0]), opts.language));
+
     const countsForAvg = (it) => it.total > 0 && (opts.include_non_counting || it.doesCount);
 
     let html = "";
-    for (const [course, courseItems] of byCourse) {
+    for (const [course, courseItems] of orderGroups(byCourse)) {
       const counted = courseItems.filter(countsForAvg);
       const avg = counted.length ? `${(counted.reduce((s, it) => s + it.pct, 0) / counted.length).toFixed(1)}%` : t.notApplicable;
       const unread = courseItems.some((it) => it.unread);
@@ -445,7 +467,7 @@ class SmartschoolResultsCard extends HTMLElement {
         byTri.get(it.trimester).push(it);
       }
 
-      for (const [trimester, triItems] of byTri) {
+      for (const [trimester, triItems] of (recent ? orderGroups(byTri) : byTri)) {
         const triCounted = triItems.filter(countsForAvg);
         const triAvg = triCounted.length ? `${(triCounted.reduce((s, it) => s + it.pct, 0) / triCounted.length).toFixed(1)}%` : t.notApplicable;
         const triUnread = triItems.some((it) => it.unread);
@@ -463,7 +485,7 @@ class SmartschoolResultsCard extends HTMLElement {
           ${opts.show_chart ? this._buildChartSvg(triCounted, triAvg) : ""}
           <div style="padding:2px 8px 6px 8px;">`;
 
-        const sortedItems = triItems.slice().sort((a, b) => new Date(a.date) - new Date(b.date));
+        const sortedItems = triItems.slice().sort((a, b) => (recent ? ts(b) - ts(a) : ts(a) - ts(b)));
         for (const item of sortedItems) {
           const color = COLOR_MAP[item.color] || item.color;
           const itemIcon = opts.result_icon || item.icon;

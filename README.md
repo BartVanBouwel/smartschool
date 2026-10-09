@@ -1,4 +1,4 @@
-![Version](https://img.shields.io/badge/version-0.24.3-blue)
+![Version](https://img.shields.io/badge/version-0.26.0-blue)
 
 # Smartschool for Home Assistant
 
@@ -22,6 +22,9 @@ Built on top of the [`smartschool`](https://github.com/svaningelgem/smartschool)
 - `smartschool.mark_message_unread` — mark a message back as unread.
 - `smartschool.mark_result_read` — flag a result sensor's `unread` attribute as read. This status is tracked entirely locally (Smartschool has no server-side read/unread concept for results); intended to be called from a dashboard card when a result is clicked.
 
+### Events
+- `smartschool_new_result` — fired once when a genuinely new result appears (not on restarts for already-known results). Event data: `child_name`, `course_name`, `result_name`, `state`, `percentage`, `unique_id`. Handy as an automation trigger for notifications.
+
 The integration never fetches the content of an unread message on its own (that would silently mark it as read) — only via the actions above, or once it's already been read elsewhere.
 
 ### Dashboard cards
@@ -44,6 +47,7 @@ The integration never fetches the content of an unread message on its own (that 
   | `language` | string | `nl` | `nl`, `en` — language the *card itself* renders its text in (independent of the editor UI, which is always English) |
   | `show_chart` | boolean | `true` | `true`, `false` — show the per-period percentage chart |
   | `show_average` | boolean | `true` | `true`, `false` — show the average per period/course |
+  | `sort_order` | string | `alphabetical` | `alphabetical` (courses A–Z), `recent` (course with the most recent result on top, then courses/periods/results newest to oldest) |
   | `include_non_counting` | boolean | `false` | `true`, `false` — include results with `does_count: false` in the average/chart too |
   | `course_icon` | string (mdi icon) | `mdi:book-education-outline` | any `mdi:*` icon name |
   | `period_icon` | string (mdi icon) | `mdi:calendar-range` | any `mdi:*` icon name |
@@ -73,7 +77,7 @@ The integration never fetches the content of an unread message on its own (that 
   unread_color: [255, 215, 0]
   ```
 
-- **`smartschool-messages-card`** — the same native-card treatment applied to the messages mailbox view (`www/smartschool-messages-card.js`, also auto-registered). A message list + reading pane (avatar initials, attachments with inline PDF/docx preview via `window.mammoth` if present on the page). Add it to a dashboard:
+- **`smartschool-messages-card`** — the same native-card treatment applied to the messages mailbox view (`www/smartschool-messages-card.js`, also auto-registered). A message list + reading pane (avatar initials, attachments with inline PDF/docx preview via `window.mammoth` if present on the page, and **Mark as read / Mark as unread** buttons under the date that apply to every message in the selected group). Add it to a dashboard:
   ```yaml
   type: custom:smartschool-messages-card
   title: Berichten

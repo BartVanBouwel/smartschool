@@ -553,6 +553,7 @@ def _add_new_result_entities(hass, session, entry_id, child_name, results):
     """Register results that have appeared since the last platform setup."""
     async_add_entities = getattr(session, "_smartschool_add_result_entities", None)
     known_keys = getattr(session, "_smartschool_result_keys", set())
+    registry = er.async_get(hass)
     new_sensors = []
     for result, course in _result_sensor_specs(results):
         result_id = str(_result_value(result, "identifier", "id") or "")
@@ -564,6 +565,23 @@ def _add_new_result_entities(hass, session, entry_id, child_name, results):
         new_sensor = SmartschoolResultSensor(hass, session, entry_id, child_name, result, course)
         new_sensor._apply_result(result)
         new_sensors.append(new_sensor)
+
+        # An entity already in the registry is one being recreated after an HA
+        # restart, not a genuinely new result -- only fire the event for a
+        # unique_id the registry has never seen, so restarts don't re-notify
+        # for results already known before the restart.
+        if registry.async_get_entity_id("sensor", DOMAIN, new_sensor._attr_unique_id) is None:
+            hass.bus.async_fire(
+                "smartschool_new_result",
+                {
+                    "child_name": child_name,
+                    "course_name": new_sensor._attributes.get("course_name"),
+                    "result_name": new_sensor._attributes.get("result_name"),
+                    "state": new_sensor._state,
+                    "percentage": new_sensor._attributes.get("percentage"),
+                    "unique_id": new_sensor._attr_unique_id,
+                },
+            )
 
     session._smartschool_result_keys = known_keys
 

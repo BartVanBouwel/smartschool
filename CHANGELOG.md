@@ -2,6 +2,17 @@
 
 All notable changes to the Smartschool integration.
 
+## 0.26.0 - 2026-10-09
+
+### New features
+- **New `smartschool_new_result` event**, fired when a genuinely new result sensor appears (never for results already in the entity registry, so HA restarts don't re-notify). Data: `child_name`, `course_name`, `result_name`, `state`, `percentage`, `unique_id`.
+- **`smartschool-messages-card`: "Mark as read" / "Mark as unread" buttons** below the date of the selected message in the right-hand pane. They apply to every message in the selected group (same subject/body). "Mark as read" is disabled when nothing in the group is unread. Selecting a message in the list still marks it read automatically.
+
+## 0.25.0 - 2026-10-09 (included in the 0.26.0 release)
+
+### New features
+- **`smartschool-results-card` sort option (`sort_order`).** Choose `alphabetical` (default: courses A–Z) or `recent` (the course with the most recent result on top, then newest to oldest; periods and results inside each course are also newest first). Also available in the card editor.
+
 ## 0.24.3 - 2026-09-27
 
 ### Bugfixes

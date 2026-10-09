@@ -77,6 +77,8 @@ const STRINGS = {
     cc: "CC",
     bcc: "BCC",
     date: "Datum",
+    markRead: "Markeer als gelezen",
+    markUnread: "Markeer als ongelezen",
     noText: "Dit bericht bevat geen tekst.",
     attachments: (n) => `Bijlagen (${n})`,
     file: "Bestand",
@@ -99,6 +101,8 @@ const STRINGS = {
     cc: "CC",
     bcc: "BCC",
     date: "Date",
+    markRead: "Mark as read",
+    markUnread: "Mark as unread",
     noText: "This message contains no text.",
     attachments: (n) => `Attachments (${n})`,
     file: "File",
@@ -324,6 +328,14 @@ class SmartschoolMessagesCard extends HTMLElement {
     }
   }
 
+  _markUnread(pairs) {
+    for (const [entityId, messageId] of pairs) {
+      this._hass.callService("smartschool", "mark_message_unread", { entity_id: entityId, message_id: messageId }).catch((err) => {
+        console.error("smartschool-messages-card: mark_message_unread failed", err);
+      });
+    }
+  }
+
   _attachmentIcon(filename) {
     const fl = filename.toLowerCase();
     if (fl.endsWith(".pdf")) return "mdi:file-pdf-box";
@@ -461,6 +473,10 @@ class SmartschoolMessagesCard extends HTMLElement {
           ${addrRow(t.bcc, bcc)}
           ${mdate ? `<div class="ssm-address-label">${escapeHtml(t.date)}</div><div class="ssm-address-value">${fmtDateTime(mdate, locale)}</div>` : ""}
         </div>
+        <div class="ssm-action-row">
+          <button type="button" class="ssm-action-btn" data-action="read"${selectedGroup.isUnread ? "" : " disabled"}>${escapeHtml(t.markRead)}</button>
+          <button type="button" class="ssm-action-btn" data-action="unread">${escapeHtml(t.markUnread)}</button>
+        </div>
       </header>
       <div class="ssm-view-body">
         <div class="ssm-html-body">${bodyClean || `<p>${escapeHtml(t.noText)}</p>`}</div>
@@ -504,6 +520,14 @@ class SmartschoolMessagesCard extends HTMLElement {
           .finally(() => setTimeout(() => refreshBtn.classList.remove("ssm-spin"), 600));
       });
     }
+
+    this._root.querySelectorAll(".ssm-action-btn").forEach((btn) => {
+      btn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        if (btn.dataset.action === "read") this._markRead(selectedGroup.pairs);
+        else this._markUnread(selectedGroup.pairs);
+      });
+    });
 
     this._root.querySelectorAll(".ssm-message-row").forEach((row) => {
       row.addEventListener("click", () => {
@@ -594,6 +618,10 @@ class SmartschoolMessagesCard extends HTMLElement {
       .ssm-view-header { padding: 20px 24px 18px; border-bottom: 1px solid var(--ssm-border); background: var(--ssm-card); }
       .ssm-view-subject { margin: 0 0 18px; overflow-wrap: anywhere; font-size: clamp(20px, 2vw, 26px); font-weight: 650; line-height: 1.25; }
       .ssm-address-grid { display: grid; grid-template-columns: minmax(85px, auto) minmax(0, 1fr); gap: 7px 14px; align-items: start; font-size: 13px; line-height: 1.45; }
+      .ssm-action-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+      .ssm-action-btn { font: inherit; font-size: 12px; font-weight: 600; padding: 5px 12px; border-radius: 6px; cursor: pointer; color: var(--primary-text-color); background: transparent; border: 1px solid var(--divider-color, rgba(127,127,127,0.4)); }
+      .ssm-action-btn:hover:not([disabled]) { background: rgba(127,127,127,0.15); }
+      .ssm-action-btn[disabled] { opacity: 0.4; cursor: default; }
       .ssm-address-label { color: var(--ssm-muted); font-weight: 500; }
       .ssm-address-value { min-width: 0; overflow-wrap: anywhere; }
       .ssm-from-value { font-weight: 600; }
