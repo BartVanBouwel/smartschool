@@ -2,6 +2,11 @@
 
 All notable changes to the Smartschool integration.
 
+## 0.26.1 - 2026-11-08
+
+### Bugfixes
+- **Messages (and student profile / calendar) stopped working with "Could not retrieve authenticated user information".** The `smartschool` library only fills `authenticated_user` while parsing the login pages and then caches it in `~/.cache`. After a Home Assistant core update the container (and that cache) is recreated, and Smartschool's current page layout is no longer understood by the library's parser (still the case in `smartschool` 0.12.1), so the user stayed empty. Message sensors became `unavailable` and the messages card was empty. A new `HASmartschool` session class (`session.py`) now falls back to reading `authenticatedUser` from the Smartschool home page. Used by both the integration and the config flow.
+
 ## 0.26.0 - 2026-10-09
 
 ### New features

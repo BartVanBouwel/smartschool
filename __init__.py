@@ -10,7 +10,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_registry as er
 from .const import DOMAIN
-from smartschool import Smartschool, AppCredentials
+from smartschool import AppCredentials
+from .session import HASmartschool
 from smartschool import BoxType, MarkMessageUnread
 
 _LOGGER = logging.getLogger(__name__)
@@ -153,7 +154,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
         creds.validate()
 
         # Create Smartschool session
-        session = Smartschool(creds)
+        session = HASmartschool(creds)
         _enable_api_debug_logging(session)
         # Off by default: CSV/debug-log export under custom_components/smartschool/logging/
         # grows without bound (confirmed live: multi-hundred-MB debug logs after a few

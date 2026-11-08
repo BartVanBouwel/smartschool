@@ -4,7 +4,8 @@ import logging
 from homeassistant import config_entries
 from homeassistant.const import CONF_USERNAME, CONF_PASSWORD
 from .const import DOMAIN
-from smartschool import Smartschool, AppCredentials
+from smartschool import AppCredentials
+from .session import HASmartschool
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -45,7 +46,7 @@ class SmartschoolConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 creds.validate()  # IMPORTANT: check that all fields are correct
 
                 # Create Smartschool session
-                session = Smartschool(creds)
+                session = HASmartschool(creds)
 
                 # Force login in a thread-safe way
                 await self.hass.async_add_executor_job(session.get, "/")
